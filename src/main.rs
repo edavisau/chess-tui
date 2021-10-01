@@ -504,21 +504,23 @@ mod chess {
                 row.iter()
                 .map(|x| {
                     if let Some(Piece{ kind: p, colour: c, ..}) = x {
-                        let p = match p {
-                            &PieceType::Pawn => 'P',
-                            &PieceType::Rook => 'R',
-                            &PieceType::Knight => 'N',
-                            &PieceType::Bishop => 'B',
-                            &PieceType::Queen => 'Q',
-                            &PieceType::King => 'K',
+                        let char = match (p, c) {
+                            (PieceType::Pawn, Colour::White) => '\u{2659}',
+                            (PieceType::Pawn, Colour::Black) => '\u{265F}',
+                            (PieceType::Rook, Colour::White) => '\u{2656}',
+                            (PieceType::Rook, Colour::Black) => '\u{265C}',
+                            (PieceType::Knight, Colour::White) => '\u{2658}',
+                            (PieceType::Knight, Colour::Black) => '\u{265E}',
+                            (PieceType::Bishop, Colour::White) => '\u{2657}',
+                            (PieceType::Bishop, Colour::Black) => '\u{265D}',
+                            (PieceType::Queen, Colour::White) => '\u{2655}',
+                            (PieceType::Queen, Colour::Black) => '\u{265B}',
+                            (PieceType::King, Colour::White) => '\u{2654}',
+                            (PieceType::King, Colour::Black) => '\u{265A}',
                         };
-                        let c = match c {
-                            &Colour::White => 'W',
-                            &Colour::Black => 'B',
-                        };
-                        format!("{}{}", p, c)
+                        format!("{}", char)
                     } else {
-                        "  ".to_string()
+                        " ".to_string()
                     }
                 })
                 .collect::<Vec<String>>()
@@ -803,6 +805,7 @@ fn play_game() {
                 continue;
             }
 
+            println!(""); // Blank line
             break;
         }
     }
