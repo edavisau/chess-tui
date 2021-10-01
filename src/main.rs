@@ -8,9 +8,11 @@ use crate::chess::PieceType;
 mod chess {
     use std::fmt::Display;
     use std::convert::{TryFrom, TryInto};
+    use serde::{Serialize, Deserialize};
 
     const BOARD_SIZE: usize = 8;
 
+    #[derive(Serialize, Deserialize)]
     pub(crate) struct Game {
         board: Vec<Vec<Option<Piece>>>,
         current_turn: Colour,
@@ -531,7 +533,7 @@ mod chess {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Serialize, Deserialize)]
     struct Piece {
         kind: PieceType,
         colour: Colour,
@@ -545,7 +547,7 @@ mod chess {
         }
     }
 
-    #[derive(PartialEq, Debug, Clone, Copy)]
+    #[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
     pub(crate) enum Colour {
         White,
         Black
@@ -569,7 +571,7 @@ mod chess {
         }
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
     pub(crate) enum PieceType {
         Pawn,
         Rook,
@@ -579,7 +581,7 @@ mod chess {
         King,
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
     struct Move {
         kind: MoveType,
         piece: PieceType,
@@ -606,7 +608,7 @@ mod chess {
         CausesCheck,
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
     enum MoveType {
         Standard(Position, Position),
         Castle(CastleType),
@@ -614,13 +616,13 @@ mod chess {
         EnPassant(Position, Position)
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
     enum CastleType {
         Long,
         Short,
     }
 
-    #[derive(Clone, Copy, Debug, PartialEq)]
+    #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
     pub struct Position(usize, usize);
 
     #[derive(Clone, Copy, Debug, PartialEq)]
