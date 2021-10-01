@@ -3,6 +3,8 @@
 use std::convert::TryFrom;
 use std::io::{self, BufRead, Write};
 
+use crate::chess::PieceType;
+
 mod chess {
     use std::fmt::Display;
     use std::convert::{TryFrom, TryInto};
@@ -88,13 +90,8 @@ mod chess {
             let piece2 = self.get_piece_mut(pos2).take();
             *self.get_piece_mut(pos1) = piece2;
             *self.get_piece_mut(pos2) = piece1;
-            self.update_piece_position(pos2);
-        }
-
-        /// Updates piece object with its current position
-        fn update_piece_position(&mut self, pos: Position) {
-            if let Some(piece) = self.get_piece_mut(pos).as_mut() {
-                piece.position = pos;
+            if let Some(piece) = self.get_piece_mut(pos2).as_mut() {
+                piece.position = pos2;
             }
         }
 
@@ -164,12 +161,12 @@ mod chess {
             }
         }
 
-        pub fn try_move_positions(&mut self, pos1: Position, pos2: Position) -> Result<(), MoveError> {
+        pub fn try_move_positions(&mut self, pos1: Position, pos2: Position, promotion_callback: fn() -> PieceType) -> Result<(), MoveError> {
             if pos1 == pos2 {
                 return Err(MoveError::InvalidMovement);
             }
 
-            let found_move: Move = match self.get_piece(pos1).as_ref() {
+            let mut found_move: Move = match self.get_piece(pos1).as_ref() {
                 Some(piece) => {
                     if piece.colour == self.current_turn {
                         self.find_move(pos1, pos2)?
@@ -179,6 +176,12 @@ mod chess {
                 },
                 None => return Err(MoveError::NoPiece),
             };
+
+            // Specify promotion piece
+            if let MoveType::Promotion(_, _, promotion_piece) = &mut found_move.kind {
+                *promotion_piece = promotion_callback();
+            } 
+
             self.try_move(found_move)?;
             Ok(())
         }
@@ -212,7 +215,7 @@ mod chess {
                     .collect::<Vec<Move>>();
 
                 let checkmate = potential_moves.iter()
-                    .map(|x| self.check_move(x, false))
+                    .map(|x| self.check_move(x, true))
                     .filter_map(|x| x.ok())
                     .next()
                     .is_none();
@@ -329,27 +332,33 @@ mod chess {
             match piece.kind {
                 PieceType::Pawn => {
                     // Makes matching easier for black movements (0, -2) instead of (0, 2)
+                    let pos_as_white = piece.position.as_white(piece.colour);
+                    let promotion = pos_as_white.1 == 6;
                     let diff_as_white = diff.as_white(piece.colour);
                     match diff_as_white { // Starting move
-                        PosDiff(0, 2) if piece.position.as_white(piece.colour).1 == 1 => {
+                        PosDiff(0, 2) if pos_as_white.1 == 1 => {
                             if let &Some(_) = self.get_piece(pos2) { return Err(MoveError::PositionBlocked) }
                             can_reach_between(self, pos1, diff)?;
                             return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)));
                         },
-                        PosDiff(0, 1) => { // Standard push or Promotion
+                        PosDiff(0, 1) => { // Move forward
                             if let &Some(_) = self.get_piece(pos2) { return Err(MoveError::PositionBlocked) }
-                            match piece.position.as_white(piece.colour).1 {
-                                1..=5 => return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2))),
-                                6 => return Ok(Move::new(piece.kind, MoveType::Promotion(pos1, pos2, PieceType::Queen))), // TODO allow for other types of promotion
-                                _ => unreachable!(),
+                            if promotion {
+                                return Ok(Move::new(piece.kind, MoveType::Promotion(pos1, pos2, PieceType::Queen)));
+                            } else {
+                                return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)));
                             }
                         }, 
-                        PosDiff(1|-1, 1) => {  // En Passant
+                        PosDiff(1|-1, 1) => {  // Attack or En Passant
                             if let &Some(_) = self.get_piece(pos2) { // Standard attack
-                                return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)))
+                                if promotion {
+                                    return Ok(Move::new(piece.kind, MoveType::Promotion(pos1, pos2, PieceType::Queen)));
+                                } else {
+                                    return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)));
+                                }
                             } else { // En Passant
                                 let last_move = self.moves.last().ok_or(MoveError::InvalidEnPassantConditions)?;
-                                if piece.position.as_white(piece.colour).1 == 4 && last_move.piece == PieceType::Pawn {
+                                if pos_as_white.1 == 4 && last_move.piece == PieceType::Pawn {
                                     if let MoveType::Standard(last_pos1, last_pos2) = last_move.kind {
                                         if last_pos1 == pos1.add(PosDiff(diff.0, diff.1 * 2)).unwrap() &&
                                                 last_pos2 == pos1.add(PosDiff(diff.0, 0)).unwrap() {
@@ -359,8 +368,6 @@ mod chess {
                                 }
                                 return Err(MoveError::InvalidEnPassantConditions);
                             }
-
-                            
                         },
                         _ => return Err(MoveError::InvalidMovement),
                     }
@@ -440,8 +447,7 @@ mod chess {
         fn is_attacked(&self, colour: Colour, position: Position) -> bool {
             self.get_all_colour_pieces(colour.flip())
                 .map(|x| self.find_move(x.position, position))
-                .filter_map(|x| x.ok())
-                .next()
+                .find_map(|x| x.ok())
                 .is_some()
         }
 
@@ -562,7 +568,7 @@ mod chess {
     }
 
     #[derive(Debug, Clone, Copy, PartialEq)]
-    enum PieceType {
+    pub(crate) enum PieceType {
         Pawn,
         Rook,
         Knight,
@@ -745,6 +751,23 @@ mod chess {
 
 
 fn play_game() {
+    fn choose_promotion() -> chess::PieceType {
+        println!("Choose a piece to promote to: 1.Knight, 2.Bishop, 3.Rook, 4.Queen", );
+        let stdin = io::stdin();
+        let selection = stdin.lock().lines().next().expect("There was no line.").expect("The line could not be read.")
+                .trim()
+                .parse::<usize>(); 
+        match selection {
+            Ok(1) => PieceType::Knight,
+            Ok(2) => PieceType::Bishop,
+            Ok(3) => PieceType::Rook,
+            Ok(4) => PieceType::Queen,
+            _ => {
+                println!("Invalid choice but we will give you queen anyway.");
+                PieceType::Queen
+            }
+        }
+    }
     let mut game = chess::Game::new();
     loop {
         println!("{}", game);
@@ -775,7 +798,7 @@ fn play_game() {
                 continue;
             }
             
-            if let Err(e) = game.try_move_positions(positions[0], positions[1]) {
+            if let Err(e) = game.try_move_positions(positions[0], positions[1], choose_promotion) {
                 println!("Invalid move: {:?}", e);
                 continue;
             }
