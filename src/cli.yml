@@ -1,0 +1,16 @@
+name: chess
+version: "0.1.0"
+author: Edward Davis
+about: Play chess through the cli
+setting: SubcommandRequiredElseHelp
+subcommands:
+    - play:
+        about: create a new game and play
+    - load:
+        about: load file and resume game
+        args:
+            - file:
+                index: 1
+                help: filename to load
+                required: true
+                multiple: false

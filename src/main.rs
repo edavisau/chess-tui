@@ -1,13 +1,13 @@
-#![allow(dead_code, unused_variables)]
-
 use std::convert::TryFrom;
 use std::io::{self, BufRead, Write};
 
 use crate::chess::PieceType;
+use clap::{App, load_yaml};
 
 mod chess {
     use std::fmt::Display;
     use std::convert::{TryFrom, TryInto};
+    use std::fs;
     use serde::{Serialize, Deserialize};
 
     const BOARD_SIZE: usize = 8;
@@ -150,7 +150,7 @@ mod chess {
                         },
                     }
                 },
-                MoveType::Promotion(p1, p2, piece_type) => {
+                MoveType::Promotion(p1, p2, _) => {
                     self.get_piece_mut(*p2).as_mut().unwrap().kind = PieceType::Pawn;
                     self.swap_pieces(*p2, *p1);
                     self.uncapture_piece(*p2);
@@ -163,7 +163,7 @@ mod chess {
             }
         }
 
-        pub fn try_move_positions(&mut self, pos1: Position, pos2: Position, promotion_callback: fn() -> PieceType) -> Result<(), MoveError> {
+        pub fn try_move_positions(&mut self, pos1: Position, pos2: Position, promotion_callback: fn() -> PieceType) -> Result<MoveResult, MoveError> {
             if pos1 == pos2 {
                 return Err(MoveError::InvalidMovement);
             }
@@ -184,8 +184,7 @@ mod chess {
                 *promotion_piece = promotion_callback();
             } 
 
-            self.try_move(found_move)?;
-            Ok(())
+            return self.try_move(found_move);
         }
     
         fn check_move(&mut self, move_: &Move, undo: bool) -> Result<(), MoveError> {
@@ -200,7 +199,7 @@ mod chess {
             Ok(())
         }
 
-        fn try_move(&mut self, move_: Move) -> Result<(), MoveError> {
+        fn try_move(&mut self, move_: Move) -> Result<MoveResult, MoveError> {
             self.check_move(&move_, false)?;
 
             // Update game
@@ -222,13 +221,13 @@ mod chess {
                     .next()
                     .is_none();
                 if checkmate {
-                    println!("CHECKMATE FOR {}", self.current_turn);
+                    return Ok(MoveResult::Checkmate(self.current_turn));
                 } else {
-                    println!("{} is in check, but not checkmate.", self.current_turn);
+                    return Ok(MoveResult::Check(self.current_turn));
                 }
+            } else {
+                return Ok(MoveResult::MovePlayed);
             }
-
-            Ok(())
         }
 
         fn get_available_moves(&self, pos: Position) -> Vec<(Position, Position)> {
@@ -462,6 +461,16 @@ mod chess {
                 .position;
             return self.is_attacked(colour, king_pos);
         }
+    
+        pub fn save_game(&self, filename: &str) {
+            let serialised = serde_json::to_string(self).expect("JSON encoding error");
+            fs::write(filename, serialised).expect("Unable to write file");
+        }
+
+        pub fn load_game(filename: &str) -> Self {
+            let serialised = fs::read_to_string(filename).expect("Unable to read file");
+            serde_json::from_str(&serialised).unwrap()
+        }
     }
 
     #[test]
@@ -563,7 +572,7 @@ mod chess {
     }
 
     impl Colour {
-        fn flip(&self) -> Self {
+        pub fn flip(&self) -> Self {
             match self {
                 Colour::White => Colour::Black,
                 Colour::Black => Colour::White,
@@ -606,6 +615,13 @@ mod chess {
         InvalidCastleConditions,
         InvalidEnPassantConditions,
         CausesCheck,
+    }
+
+    #[derive(Debug, PartialEq)]
+    pub(crate) enum MoveResult {
+        MovePlayed,
+        Check(Colour),
+        Checkmate(Colour)
     }
 
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -751,62 +767,110 @@ mod chess {
         assert_eq!(diff.as_white(Colour::White), diff);
     }
     
+    pub enum Action {
+        TryPlay(Position, Position),
+        SaveGame(String),
+        QuitGame,
+    }
+
 }
 
-
-fn play_game() {
-    fn choose_promotion() -> chess::PieceType {
-        println!("Choose a piece to promote to: 1.Knight, 2.Bishop, 3.Rook, 4.Queen", );
-        let stdin = io::stdin();
-        let selection = stdin.lock().lines().next().expect("There was no line.").expect("The line could not be read.")
-                .trim()
-                .parse::<usize>(); 
-        match selection {
-            Ok(1) => PieceType::Knight,
-            Ok(2) => PieceType::Bishop,
-            Ok(3) => PieceType::Rook,
-            Ok(4) => PieceType::Queen,
-            _ => {
-                println!("Invalid choice but we will give you queen anyway.");
-                PieceType::Queen
-            }
+fn choose_promotion() -> chess::PieceType {
+    println!("Choose a piece to promote to: 1.Knight, 2.Bishop, 3.Rook, 4.Queen", );
+    let stdin = io::stdin();
+    let selection = stdin.lock().lines().next().expect("There was no line.").expect("The line could not be read.")
+            .trim()
+            .parse::<usize>(); 
+    match selection {
+        Ok(1) => PieceType::Knight,
+        Ok(2) => PieceType::Bishop,
+        Ok(3) => PieceType::Rook,
+        Ok(4) => PieceType::Queen,
+        _ => {
+            println!("Invalid choice but we will give you queen anyway.");
+            PieceType::Queen
         }
     }
-    let mut game = chess::Game::new();
+}
+
+fn request_action() -> Result<chess::Action, &'static str> {
+    let stdin = io::stdin();
+    let player_input = stdin.lock()
+        .lines()
+        .next()
+        .expect("There was no line.")
+        .expect("The line could not be read.")
+        .trim()
+        .split_whitespace()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>();
+
+    if player_input.len() == 0 {
+        return Err("No command written!");
+    }
+
+    if player_input[0].starts_with("/") {
+        match &player_input[0][1..] {
+            "q" => return Ok(chess::Action::QuitGame),
+            "s" => {
+                if player_input.len() >= 2 {
+                    return Ok(chess::Action::SaveGame(player_input[1].to_string()))
+                } else {
+                    return Err("Must enter a filename to save game.");
+                }
+            }
+            _ => return Err("Invalid command. Commands are 's' or 'q'")
+        }
+    }
+
+    let positions: Vec<chess::Position> = match player_input.into_iter()
+            .map(|x| chess::Position::try_from(&x[..]))
+            .collect() {
+        Ok(positions) => positions,
+        _ => return Err("Invalid positions entered."),
+    };
+    if positions.len() != 2 {
+        return Err("Must write only two positions separated by whitespace!");
+    }
+    return Ok(chess::Action::TryPlay(positions[0], positions[1]));
+}
+
+fn play_game(mut game: chess::Game) {
     loop {
         println!("{}", game);
-        println!("{}. {} Turn", game.get_current_count() + 1, game.get_current_colour());
-        let mut positions: Vec<chess::Position>;
+        println!("{}. {}'s Turn", game.get_current_count() + 1, game.get_current_colour());
         loop {
             print!("Move: ");
             io::stdout().flush().expect("Could not flush!");
             
-            let stdin = io::stdin();
-            positions = match stdin.lock()
-                .lines()
-                .next()
-                .expect("There was no line.")
-                .expect("The line could not be read.")
-                .trim()
-                .split_whitespace()
-                .map(|x| chess::Position::try_from(x))
-                .collect() {
-                    Ok(positions) => positions,
-                    Err(e) => {
-                        println!("Errors: {}", e);
-                        continue;
-                    }
+            let action = match request_action() {
+                Ok(action) => action,
+                Err(e) => {
+                    println!("Invalid input: {}", e);
+                    continue;
+                }
             };
-            if positions.len() != 2 {
-                println!("Must write two positions separated by whitespace!");
-                continue;
+
+            match action {
+                chess::Action::TryPlay(p1, p2) => {
+                    match game.try_move_positions(p1, p2, choose_promotion) {
+                        Ok(chess::MoveResult::MovePlayed) => (),
+                        Ok(chess::MoveResult::Check(colour)) => println!("{} is in check.", colour),
+                        Ok(chess::MoveResult::Checkmate(colour)) => {
+                            println!("{}", game);
+                            println!("Game over, {} has been checkmated! {} is the winner!", colour, colour.flip());
+                            return;
+                        }
+                        Err(e) => {
+                            println!("Invalid move: {:?}", e);
+                            continue;
+                        }
+                    }
+                },
+                chess::Action::SaveGame(filename) => game.save_game(&filename),
+                chess::Action::QuitGame => return,
             }
             
-            if let Err(e) = game.try_move_positions(positions[0], positions[1], choose_promotion) {
-                println!("Invalid move: {:?}", e);
-                continue;
-            }
-
             println!(""); // Blank line
             break;
         }
@@ -814,5 +878,15 @@ fn play_game() {
 }
 
 fn main() {
-    play_game();
+    let yaml = load_yaml!("cli.yml");
+    let matches = App::from_yaml(yaml).get_matches();
+
+    if matches.is_present("play") {
+        play_game(chess::Game::new());
+    } else if let Some(matches) = matches.subcommand_matches("load") {
+        let file = matches.value_of("file").unwrap();
+        play_game(chess::Game::load_game(file));
+    } else {
+        unreachable!();
+    }
 }
