@@ -116,11 +116,11 @@ impl TryFrom<&str> for Position {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let mut value = value.chars();
 
-        let alphabet = vec!['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+        let alphabet = vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
         let c = value.next().ok_or("Invalid length")?;
         let x: usize = match alphabet.iter().position(|&x| x == c) {
             Some(x) => x,
-            None => return Err("Column must be A-Z (capitals)")
+            None => return Err("Column must be a-z (lowercase)")
         };
 
         let y = match usize::from_str_radix(value.as_str(), 10) {
@@ -142,13 +142,13 @@ impl PosDiff {
 
 #[test]
 fn test_position_try_from_str() {
-    let good1 = "C3".to_string();
+    let good1 = "c3".to_string();
     assert_eq!(Position::try_from(&good1[..]), Ok(Position(2, 2)));
-    let good2 = "H8".to_string();
+    let good2 = "h8".to_string();
     assert_eq!(Position::try_from(&good2[..]), Ok(Position(7, 7)));
-    let bad1 = "A9".to_string();
+    let bad1 = "a9".to_string();
     assert!(Position::try_from(&bad1[..]).is_err());
-    let bad2 = "K1".to_string();
+    let bad2 = "k1".to_string();
     assert!(Position::try_from(&bad2[..]).is_err());
     let bad3 = "asfd".to_string();
     assert!(Position::try_from(&bad3[..]).is_err());
@@ -163,16 +163,16 @@ fn test_position_try_from_usize_pair() {
 
 #[test]
 fn test_position_add() {
-    let position = Position::try_from("G8").unwrap();
-    assert_eq!(position.add(PosDiff(-3, -2)).unwrap(), Position::try_from("D6").unwrap());
+    let position = Position::try_from("g8").unwrap();
+    assert_eq!(position.add(PosDiff(-3, -2)).unwrap(), Position::try_from("d6").unwrap());
     assert!(position.add(PosDiff(2, 1)).is_err());
 }
 
 #[test]
 fn test_position_diff() {
-    let pos1 = Position::try_from("G8").unwrap();
-    let pos2 = Position::try_from("A2").unwrap();
-    let pos3 = Position::try_from("C1").unwrap();
+    let pos1 = Position::try_from("g8").unwrap();
+    let pos2 = Position::try_from("a2").unwrap();
+    let pos3 = Position::try_from("c1").unwrap();
     assert_eq!(Position::diff(pos1, pos2), PosDiff(6, 6));
     assert_eq!(Position::diff(pos2, pos1), PosDiff(-6, -6));
     assert_eq!(Position::diff(pos3, pos2), PosDiff(2, -1));
@@ -180,8 +180,8 @@ fn test_position_diff() {
 
 #[test]
 fn test_position_as_white() {
-    let pos1 = Position::try_from("G8").unwrap();
-    assert_eq!(pos1.as_white(Colour::Black), Position::try_from("B1").unwrap());
+    let pos1 = Position::try_from("g8").unwrap();
+    assert_eq!(pos1.as_white(Colour::Black), Position::try_from("b1").unwrap());
     assert_eq!(pos1.as_white(Colour::White), pos1);
 }
 
@@ -192,7 +192,7 @@ fn test_posdiff_as_white() {
     assert_eq!(diff.as_white(Colour::White), diff);
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct MoveRequestSAN {
     piece: PieceType,
     end_pos: Option<Position>,
@@ -224,11 +224,11 @@ impl TryFrom<&str> for MoveRequestSAN {
         // Piece type
         let piece_type = match chars[slice_start] {
             'K' => {slice_start += 1; PieceType::King},
-            'Q' => {slice_start += 1; PieceType::King},
-            'R' => {slice_start += 1; PieceType::King},
-            'B' => {slice_start += 1; PieceType::King},
-            'N' => {slice_start += 1; PieceType::King},
-            'P' => {slice_start += 1; PieceType::King},
+            'Q' => {slice_start += 1; PieceType::Queen},
+            'R' => {slice_start += 1; PieceType::Rook},
+            'B' => {slice_start += 1; PieceType::Bishop},
+            'N' => {slice_start += 1; PieceType::Knight},
+            'P' => {slice_start += 1; PieceType::Pawn},
             _ => PieceType::Pawn, // e.g. "e4" defaults to Pawn
         };
 
@@ -254,7 +254,11 @@ impl TryFrom<&str> for MoveRequestSAN {
         }
 
         let rank: Option<usize> = if slice_end - slice_start >= 1 {
-            parse_rank(&chars[slice_end - 1])
+            let rank = parse_rank(&chars[slice_end - 1]);
+            if let Some(_) = rank {
+                slice_end -= 1;
+            }
+            rank
         } else {
             None
         };
@@ -281,4 +285,38 @@ impl TryFrom<&str> for MoveRequestSAN {
             castle: None,
         })
     }
+}
+
+#[test]
+fn test_san_moves() {
+    // Castling
+    assert_eq!(
+        MoveRequestSAN::try_from("O-O-O").unwrap(), 
+        MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Long)} 
+    );
+    assert_eq!(
+        MoveRequestSAN::try_from("O-O").unwrap(), 
+        MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Short)} 
+    );
+    // Normal moves
+    assert_eq!(
+        MoveRequestSAN::try_from("Re5").unwrap(), 
+        MoveRequestSAN {piece: PieceType::Rook, end_pos: Position::try_from("e5").ok(), start_file: None, start_rank: None, castle: None} 
+    );
+    assert_eq!(
+        MoveRequestSAN::try_from("Ba1").unwrap(), 
+        MoveRequestSAN {piece: PieceType::Bishop, end_pos: Position::try_from("a1").ok(), start_file: None, start_rank: None, castle: None} 
+    );
+    assert_eq!(
+        MoveRequestSAN::try_from("e4#").unwrap(), 
+        MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("e4").ok(), start_file: None, start_rank: None, castle: None} 
+    );
+    assert_eq!(
+        MoveRequestSAN::try_from("gxh7").unwrap(), 
+        MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("h7").ok(), start_file: Some(6), start_rank: None, castle: None} 
+    );
+    assert_eq!(
+        MoveRequestSAN::try_from("Nb1xc3").unwrap(), 
+        MoveRequestSAN {piece: PieceType::Knight, end_pos: Position::try_from("c3").ok(), start_file: Some(1), start_rank: Some(0), castle: None} 
+    );
 }

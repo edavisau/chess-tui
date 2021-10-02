@@ -514,31 +514,31 @@ fn test_find_move() {
 
     // Pawn E2 -> E4
     assert_eq!(
-        game.find_move("E2".try_into().unwrap(), "E4".try_into().unwrap()).unwrap(),
-        Move::new(PieceType::Pawn, MoveType::Standard("E2".try_into().unwrap(), "E4".try_into().unwrap()))
+        game.find_move("e2".try_into().unwrap(), "e4".try_into().unwrap()).unwrap(),
+        Move::new(PieceType::Pawn, MoveType::Standard("e2".try_into().unwrap(), "e4".try_into().unwrap()))
     );
 
     // Queen D1 -> B3
     assert_eq!(
-        game.find_move("D1".try_into().unwrap(), "B3".try_into().unwrap()).err().unwrap(),
+        game.find_move("d1".try_into().unwrap(), "b3".try_into().unwrap()).err().unwrap(),
         MoveError::PositionBlocked
     );
 
     // Bishop F8 -> A3
     assert_eq!(
-        game.find_move("F8".try_into().unwrap(), "A3".try_into().unwrap()).err().unwrap(),
+        game.find_move("f8".try_into().unwrap(), "a3".try_into().unwrap()).err().unwrap(),
         MoveError::PositionBlocked
     );
 
     // Bishop F8 -> A4
     assert_eq!(
-        game.find_move("F8".try_into().unwrap(), "A4".try_into().unwrap()).err().unwrap(),
+        game.find_move("f8".try_into().unwrap(), "a4".try_into().unwrap()).err().unwrap(),
         MoveError::InvalidMovement
     );
 
     // Queen D1 -> E1
     assert_eq!(
-        game.find_move("D1".try_into().unwrap(), "E1".try_into().unwrap()).err().unwrap(),
+        game.find_move("d1".try_into().unwrap(), "e1".try_into().unwrap()).err().unwrap(),
         MoveError::AttackingSameColour
     );
 
