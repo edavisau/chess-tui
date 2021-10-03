@@ -11,8 +11,20 @@ enum Action {
     TryPlaySAN(String),
     SaveGame(String),
     QuitGame,
+    PrintHelp,
 }
 
+fn print_help() {
+    println!("How to use: enter a move using the notation below or a command starting with '/'\n\
+    Move Notation:\n\
+    \tAbsolute positions: 'e2 e4', 'b8 c6', 'a5 b6'\n\
+    \tStandard notation: 'Nc3', 'd5', 'fxg6', 'Q3xf4#'\n\
+    \n\
+    Commands:\n\
+    \t/h: print help\n\
+    \t/s <file>: save game to file\n\
+    \t/q: quit game\n");
+}
 
 fn choose_promotion() -> PieceType {
     println!("Choose a piece to promote to: 1.Queen, 2.Rook, 3.Knight, 4.Bishop");
@@ -57,7 +69,8 @@ fn request_action() -> Result<Action, &'static str> {
                 } else {
                     return Err("Must enter a filename to save game.");
                 }
-            }
+            },
+            "h" => return Ok(Action::PrintHelp),
             _ => return Err("Invalid command. Commands are 's' or 'q'")
         }
     }
@@ -75,6 +88,7 @@ fn request_action() -> Result<Action, &'static str> {
 }
 
 fn play_game(mut game: Game) {
+    print_help();
     loop {
         println!("{}", game);
         println!("{}. {}'s Turn", game.get_current_count() + 1, game.get_current_colour());
@@ -90,12 +104,19 @@ fn play_game(mut game: Game) {
                 }
             };
 
-            let mut move_attempted: Option<Result<MoveResult, MoveError>> = None;
+            let move_attempted: Option<Result<MoveResult, MoveError>>;
             match action {
                 Action::TryPlayPositions(p1, p2) => { move_attempted = Some(game.try_move_positions(p1, p2, choose_promotion)) },
                 Action::TryPlaySAN(value) => { move_attempted = Some(game.attempt_san_move(&value[..], choose_promotion)) },
-                Action::SaveGame(filename) => game.save_game(&filename),
+                Action::SaveGame(filename) => {
+                    game.save_game(&filename);
+                    continue;
+                },
                 Action::QuitGame => return,
+                Action::PrintHelp => {
+                    print_help(); 
+                    continue;
+                },
             }
 
             if let Some(result) = move_attempted {
