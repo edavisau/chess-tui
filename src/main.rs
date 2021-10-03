@@ -1,13 +1,10 @@
 use std::io::{self, BufRead, Write};
 
-use chess::moves::MoveResult;
 use clap::{App, load_yaml};
 
 mod chess;
-use chess::game;
-use chess::moves;
-
-use crate::chess::moves::MoveError;
+use chess::game::{Game, PieceType};
+use chess::moves::{MoveResult, MoveError};
 
 enum Action {
     TryPlayPositions(String, String),
@@ -17,20 +14,20 @@ enum Action {
 }
 
 
-fn choose_promotion() -> game::PieceType {
+fn choose_promotion() -> PieceType {
     println!("Choose a piece to promote to: 1.Queen, 2.Rook, 3.Knight, 4.Bishop");
     let stdin = io::stdin();
     let selection = stdin.lock().lines().next().expect("There was no line.").expect("The line could not be read.")
             .trim()
             .parse::<usize>(); 
     match selection {
-        Ok(1) => game::PieceType::Queen,
-        Ok(2) => game::PieceType::Rook,
-        Ok(3) => game::PieceType::Knight,
-        Ok(4) => game::PieceType::Bishop,
+        Ok(1) => PieceType::Queen,
+        Ok(2) => PieceType::Rook,
+        Ok(3) => PieceType::Knight,
+        Ok(4) => PieceType::Bishop,
         _ => {
             println!("Invalid choice but we will give you queen anyway.");
-            game::PieceType::Queen
+            PieceType::Queen
         }
     }
 }
@@ -77,7 +74,7 @@ fn request_action() -> Result<Action, &'static str> {
     }
 }
 
-fn play_game(mut game: game::Game) {
+fn play_game(mut game: Game) {
     loop {
         println!("{}", game);
         println!("{}. {}'s Turn", game.get_current_count() + 1, game.get_current_colour());
@@ -103,9 +100,9 @@ fn play_game(mut game: game::Game) {
 
             if let Some(result) = move_attempted {
                 match result {
-                    Ok(moves::MoveResult::MovePlayed) => (),
-                    Ok(moves::MoveResult::Check(colour)) => println!("{} is in check.", colour),
-                    Ok(moves::MoveResult::Checkmate(colour)) => {
+                    Ok(MoveResult::MovePlayed) => (),
+                    Ok(MoveResult::Check(colour)) => println!("{} is in check.", colour),
+                    Ok(MoveResult::Checkmate(colour)) => {
                         println!("{}", game);
                         println!("Game over, {} has been checkmated! {} is the winner!", colour, colour.flip());
                         return;
@@ -128,10 +125,10 @@ fn main() {
     let matches = App::from_yaml(yaml).get_matches();
 
     if matches.is_present("play") {
-        play_game(game::Game::new());
+        play_game(Game::new());
     } else if let Some(matches) = matches.subcommand_matches("load") {
         let file = matches.value_of("file").unwrap();
-        play_game(game::Game::load_game(file));
+        play_game(Game::load_game(file));
     } else {
         unreachable!();
     }

@@ -117,11 +117,10 @@ impl TryFrom<&str> for Position {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let mut value = value.chars();
 
-        let alphabet = vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
         let c = value.next().ok_or("Invalid length")?;
-        let x: usize = match alphabet.iter().position(|&x| x == c) {
+        let x: usize = match parse_file(&c) {
             Some(x) => x,
-            None => return Err("Column must be a-z (lowercase)")
+            None => return Err("Column must be a-h (lowercase)")
         };
 
         let y = match usize::from_str_radix(value.as_str(), 10) {
