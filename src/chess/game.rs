@@ -8,12 +8,6 @@ use super::moves::*;
 use serde::{Serialize, Deserialize};
 
 
-pub(crate) enum Action {
-    TryPlay(Position, Position),
-    SaveGame(String),
-    QuitGame,
-}
-
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Game {
     board: Vec<Vec<Option<Piece>>>,
@@ -165,7 +159,10 @@ impl Game {
         }
     }
 
-    pub fn try_move_positions(&mut self, pos1: Position, pos2: Position, promotion_callback: fn() -> PieceType) -> Result<MoveResult, MoveError> {
+    pub fn try_move_positions(&mut self, pos1: String, pos2: String, promotion_callback: fn() -> PieceType) -> Result<MoveResult, MoveError> {
+        let pos1: Position = Position::try_from(&pos1[..]).map_err(|_| MoveError::InvalidMoveRequest)?;
+        let pos2: Position = Position::try_from(&pos2[..]).map_err(|_| MoveError::InvalidMoveRequest)?;
+        
         if pos1 == pos2 {
             return Err(MoveError::InvalidMovement);
         }
@@ -454,13 +451,17 @@ impl Game {
             .is_some()
     }
 
-    /// Checks if a colour is in check
-    fn is_in_check(&self, colour: Colour) -> bool {
-        let king_pos = self.iterate_pieces()
+    fn get_king_pos(&self, colour: Colour) -> Position {
+        self.iterate_pieces()
             .filter(move |&x| x.colour == colour && x.kind == PieceType::King)
             .next()
             .unwrap()
-            .position;
+            .position
+    }
+
+    /// Checks if a colour is in check
+    fn is_in_check(&self, colour: Colour) -> bool {
+        let king_pos = self.get_king_pos(colour); 
         return self.is_attacked(colour, king_pos);
     }
 
@@ -472,6 +473,49 @@ impl Game {
     pub fn load_game(filename: &str) -> Self {
         let serialised = fs::read_to_string(filename).expect("Unable to read file");
         serde_json::from_str(&serialised).unwrap()
+    }
+
+    fn try_san_request(&mut self, move_request: MoveRequestSAN) -> Result<Move, &'static str> {
+        // Castling
+        if let Some(castle_type) = move_request.castle {
+            // TODO: check castle conditions in a less forced way
+            let king_pos = self.get_king_pos(self.get_current_colour());
+            let diff = if castle_type == CastleType::Long { PosDiff(-2 , 0) } else { PosDiff(2, 0) };
+            let second_pos = king_pos.add(diff).map_err(|_| "King in the wrong position to castle")?;
+            return self.find_move(king_pos, second_pos).map_err(|_| "Invalid castle conditions");
+        }
+
+        let pieces: Vec<&Piece> = self.get_all_colour_pieces(self.get_current_colour())
+            .filter(|&x| x.kind == move_request.piece)
+            .filter(|&x| if let Some(file) = move_request.start_file { x.position.0 == file } else { true } )
+            .filter(|&x| if let Some(rank) = move_request.start_rank { x.position.1 == rank } else { true } )
+            .collect();
+        if pieces.len() == 0 {
+            return Err("No piece from the move request has been found on the board.")
+        }
+
+        let mut potential_moves: Vec<Move> = pieces.into_iter()
+            .map(|x| self.find_move(x.position, move_request.end_pos.unwrap()))
+            .filter_map(|x| x.ok())
+            .collect();
+
+        return match potential_moves.len() {
+            0 => Err("No move is possible."),
+            1 => Ok(potential_moves.remove(0)),
+            _ => Err("This move has multiple possibilities. Please make it more specific."),
+        }
+    }
+
+    pub fn attempt_san_move(&mut self, value: &str, promotion_callback: fn() -> PieceType) -> Result<MoveResult, MoveError> {
+        let move_request = MoveRequestSAN::try_from(value).map_err(|_| MoveError::InvalidMoveRequest)?;
+        let mut found_move = self.try_san_request(move_request).map_err(|_| MoveError::InvalidMoveRequest)?;
+        
+        // Specify promotion piece
+        if let MoveType::Promotion(_, _, promotion_piece) = &mut found_move.kind {
+            *promotion_piece = promotion_callback();
+        } 
+
+        return self.try_move(found_move);
     }
 }
 

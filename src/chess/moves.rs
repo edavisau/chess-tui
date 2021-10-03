@@ -40,6 +40,7 @@ pub(crate) enum MoveError {
     InvalidCastleConditions,
     InvalidEnPassantConditions,
     CausesCheck,
+    InvalidMoveRequest,
 }
 
 #[derive(Debug, PartialEq)]
@@ -193,12 +194,12 @@ fn test_posdiff_as_white() {
 }
 
 #[derive(Debug, PartialEq)]
-struct MoveRequestSAN {
-    piece: PieceType,
-    end_pos: Option<Position>,
-    start_file: Option<usize>,
-    start_rank: Option<usize>,
-    castle: Option<CastleType>,
+pub(super) struct MoveRequestSAN {
+    pub(super) piece: PieceType,
+    pub(super) end_pos: Option<Position>,
+    pub(super) start_file: Option<usize>,
+    pub(super) start_rank: Option<usize>,
+    pub(super) castle: Option<CastleType>,
 }
 
 impl TryFrom<&str> for MoveRequestSAN {

@@ -1,23 +1,33 @@
-use std::convert::TryFrom;
 use std::io::{self, BufRead, Write};
 
+use chess::moves::MoveResult;
 use clap::{App, load_yaml};
 
 mod chess;
 use chess::game;
 use chess::moves;
 
+use crate::chess::moves::MoveError;
+
+enum Action {
+    TryPlayPositions(String, String),
+    TryPlaySAN(String),
+    SaveGame(String),
+    QuitGame,
+}
+
+
 fn choose_promotion() -> game::PieceType {
-    println!("Choose a piece to promote to: 1.Knight, 2.Bishop, 3.Rook, 4.Queen", );
+    println!("Choose a piece to promote to: 1.Queen, 2.Rook, 3.Knight, 4.Bishop");
     let stdin = io::stdin();
     let selection = stdin.lock().lines().next().expect("There was no line.").expect("The line could not be read.")
             .trim()
             .parse::<usize>(); 
     match selection {
-        Ok(1) => game::PieceType::Knight,
-        Ok(2) => game::PieceType::Bishop,
-        Ok(3) => game::PieceType::Rook,
-        Ok(4) => game::PieceType::Queen,
+        Ok(1) => game::PieceType::Queen,
+        Ok(2) => game::PieceType::Rook,
+        Ok(3) => game::PieceType::Knight,
+        Ok(4) => game::PieceType::Bishop,
         _ => {
             println!("Invalid choice but we will give you queen anyway.");
             game::PieceType::Queen
@@ -25,9 +35,9 @@ fn choose_promotion() -> game::PieceType {
     }
 }
 
-fn request_action() -> Result<chess::game::Action, &'static str> {
+fn request_action() -> Result<Action, &'static str> {
     let stdin = io::stdin();
-    let player_input = stdin.lock()
+    let mut player_input = stdin.lock()
         .lines()
         .next()
         .expect("There was no line.")
@@ -43,10 +53,10 @@ fn request_action() -> Result<chess::game::Action, &'static str> {
 
     if player_input[0].starts_with("/") {
         match &player_input[0][1..] {
-            "q" => return Ok(game::Action::QuitGame),
+            "q" => return Ok(Action::QuitGame),
             "s" => {
                 if player_input.len() >= 2 {
-                    return Ok(game::Action::SaveGame(player_input[1].to_string()))
+                    return Ok(Action::SaveGame(player_input[1].to_string()))
                 } else {
                     return Err("Must enter a filename to save game.");
                 }
@@ -55,16 +65,16 @@ fn request_action() -> Result<chess::game::Action, &'static str> {
         }
     }
 
-    let positions: Vec<moves::Position> = match player_input.into_iter()
-            .map(|x| moves::Position::try_from(&x[..]))
-            .collect() {
-        Ok(positions) => positions,
-        _ => return Err("Invalid positions entered."),
-    };
-    if positions.len() != 2 {
-        return Err("Must write only two positions separated by whitespace!");
+    return match player_input.len() {
+        0 => unreachable!(),
+        1 => Ok(Action::TryPlaySAN(player_input.remove(0))),
+        2 => {
+            let b = player_input.remove(1); // unpacking backwards because Vec is array-based. There must be a nicer way.
+            let a = player_input.remove(0);
+            Ok(Action::TryPlayPositions(a, b))
+        },
+        _ => Err("Too many tokens.")
     }
-    return Ok(game::Action::TryPlay(positions[0], positions[1]));
 }
 
 fn play_game(mut game: game::Game) {
@@ -83,24 +93,28 @@ fn play_game(mut game: game::Game) {
                 }
             };
 
+            let mut move_attempted: Option<Result<MoveResult, MoveError>> = None;
             match action {
-                chess::game::Action::TryPlay(p1, p2) => {
-                    match game.try_move_positions(p1, p2, choose_promotion) {
-                        Ok(moves::MoveResult::MovePlayed) => (),
-                        Ok(moves::MoveResult::Check(colour)) => println!("{} is in check.", colour),
-                        Ok(moves::MoveResult::Checkmate(colour)) => {
-                            println!("{}", game);
-                            println!("Game over, {} has been checkmated! {} is the winner!", colour, colour.flip());
-                            return;
-                        }
-                        Err(e) => {
-                            println!("Invalid move: {:?}", e);
-                            continue;
-                        }
+                Action::TryPlayPositions(p1, p2) => { move_attempted = Some(game.try_move_positions(p1, p2, choose_promotion)) },
+                Action::TryPlaySAN(value) => { move_attempted = Some(game.attempt_san_move(&value[..], choose_promotion)) },
+                Action::SaveGame(filename) => game.save_game(&filename),
+                Action::QuitGame => return,
+            }
+
+            if let Some(result) = move_attempted {
+                match result {
+                    Ok(moves::MoveResult::MovePlayed) => (),
+                    Ok(moves::MoveResult::Check(colour)) => println!("{} is in check.", colour),
+                    Ok(moves::MoveResult::Checkmate(colour)) => {
+                        println!("{}", game);
+                        println!("Game over, {} has been checkmated! {} is the winner!", colour, colour.flip());
+                        return;
                     }
-                },
-                game::Action::SaveGame(filename) => game.save_game(&filename),
-                game::Action::QuitGame => return,
+                    Err(e) => {
+                        println!("Invalid move: {:?}", e);
+                        continue;
+                    }
+                }
             }
             
             println!(""); // Blank line
