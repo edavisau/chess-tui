@@ -497,12 +497,22 @@ impl Game {
     }
 
     fn try_san_request(&mut self, move_request: &MoveRequestSAN) -> Result<Move, &'static str> {
+        // Most moves can be found by looking at the position and using Game::found_move.
+        // However castling and promotions can be handled differently
+
         // Castling
         if let Some(castle_type) = move_request.castle {
             if self.can_castle(castle_type, self.get_current_colour()) {
                 return Ok(Move::new(PieceType::King, MoveType::Castle(castle_type)));
             } else {
                 return Err("Invalid castle conditions");
+            }
+        }
+
+        // Promotions
+        if move_request.piece == PieceType::Pawn && move_request.end_pos.unwrap().1 == 7 {
+            if move_request.promotion.is_none() {
+                return Err("Must provide promotion piece when doing promotions")
             }
         }
 
@@ -601,7 +611,12 @@ fn test_find_move() {
 fn test_san_moves() {
     let mut game = Game::from_san_moves(vec!["Nc3", "e5", "Nf3", "a6", "Nb5", "a5"]).unwrap();
     assert!(game.attempt_san_move("Nd4").is_err());
-    assert!(game.attempt_san_move("Nbd4").is_ok())
+    assert!(game.attempt_san_move("Nbd4").is_ok());
+
+    // promotions
+    let mut game = Game::from_san_moves(vec!["c4", "b5", "cxb5", "c5", "c6", "Bb7", "cxb7", "a6"]).unwrap();
+    assert!(game.attempt_san_move("bxa8").is_err());
+    assert!(game.attempt_san_move("bxa8=Q").is_ok());
 }
 
 #[derive(Debug, Serialize, Deserialize)]
