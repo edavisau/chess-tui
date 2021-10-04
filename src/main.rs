@@ -107,7 +107,7 @@ fn play_game(mut game: Game) {
             let move_attempted: Option<Result<MoveResult, MoveError>>;
             match action {
                 Action::TryPlayPositions(p1, p2) => { move_attempted = Some(game.try_move_positions(p1, p2, choose_promotion)) },
-                Action::TryPlaySAN(value) => { move_attempted = Some(game.attempt_san_move(&value[..], choose_promotion)) },
+                Action::TryPlaySAN(value) => { move_attempted = Some(game.attempt_san_move(&value[..])) },
                 Action::SaveGame(filename) => {
                     game.save_game(&filename);
                     continue;

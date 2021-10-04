@@ -199,6 +199,7 @@ pub(super) struct MoveRequestSAN {
     pub(super) start_file: Option<usize>,
     pub(super) start_rank: Option<usize>,
     pub(super) castle: Option<CastleType>,
+    pub(super) promotion: Option<PieceType>,
 }
 
 impl TryFrom<&str> for MoveRequestSAN {
@@ -207,8 +208,8 @@ impl TryFrom<&str> for MoveRequestSAN {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         // Check for castling
         match value {
-            "O-O-O" => return Ok(MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Long)}),
-            "O-O" => return Ok(MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Short)}),
+            "O-O-O" => return Ok(MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Long), promotion: None}),
+            "O-O" => return Ok(MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Short), promotion: None}),
             _ => (), 
         }
 
@@ -237,6 +238,23 @@ impl TryFrom<&str> for MoveRequestSAN {
             // Ignore for now. TODO send a warning if this is not true.
             slice_end -= 1;
         }
+
+        let promotion: Option<PieceType> = if slice_end - slice_start >= 2 {
+            let promotion_keys = vec!['Q', 'R', 'B', 'N'];
+            let promotion_pieces = vec![PieceType::Queen, PieceType::Rook, PieceType::Bishop, PieceType::Knight];
+            match promotion_keys.iter().position(|&x| x == chars[slice_end - 1]) {
+                Some(i) => {
+                    if chars[slice_end - 2] != '=' {
+                        return Err("Promotion must have an equals sign.")
+                    }
+                    slice_end -= 2;
+                    Some(promotion_pieces[i])
+                },
+                None => None,
+            }
+        } else {
+            return Err("Value does not meet the minimum size.")
+        };
 
         // End position
         let end_pos: Position = if slice_end - slice_start >= 2 {
@@ -283,6 +301,7 @@ impl TryFrom<&str> for MoveRequestSAN {
             start_file: file,
             start_rank: rank,
             castle: None,
+            promotion
         })
     }
 }
@@ -292,31 +311,35 @@ fn test_san_moves() {
     // Castling
     assert_eq!(
         MoveRequestSAN::try_from("O-O-O").unwrap(), 
-        MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Long)} 
+        MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Long), promotion: None} 
     );
     assert_eq!(
         MoveRequestSAN::try_from("O-O").unwrap(), 
-        MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Short)} 
+        MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Short), promotion: None} 
     );
     // Normal moves
     assert_eq!(
         MoveRequestSAN::try_from("Re5").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Rook, end_pos: Position::try_from("e5").ok(), start_file: None, start_rank: None, castle: None} 
+        MoveRequestSAN {piece: PieceType::Rook, end_pos: Position::try_from("e5").ok(), start_file: None, start_rank: None, castle: None, promotion: None} 
     );
     assert_eq!(
         MoveRequestSAN::try_from("Ba1").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Bishop, end_pos: Position::try_from("a1").ok(), start_file: None, start_rank: None, castle: None} 
+        MoveRequestSAN {piece: PieceType::Bishop, end_pos: Position::try_from("a1").ok(), start_file: None, start_rank: None, castle: None, promotion: None} 
     );
     assert_eq!(
         MoveRequestSAN::try_from("e4#").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("e4").ok(), start_file: None, start_rank: None, castle: None} 
+        MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("e4").ok(), start_file: None, start_rank: None, castle: None, promotion: None} 
     );
     assert_eq!(
         MoveRequestSAN::try_from("gxh7").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("h7").ok(), start_file: Some(6), start_rank: None, castle: None} 
+        MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("h7").ok(), start_file: Some(6), start_rank: None, castle: None, promotion: None} 
     );
     assert_eq!(
         MoveRequestSAN::try_from("Nb1xc3").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Knight, end_pos: Position::try_from("c3").ok(), start_file: Some(1), start_rank: Some(0), castle: None} 
+        MoveRequestSAN {piece: PieceType::Knight, end_pos: Position::try_from("c3").ok(), start_file: Some(1), start_rank: Some(0), castle: None, promotion: None} 
+    );
+    assert_eq!(
+        MoveRequestSAN::try_from("e8=Q").unwrap(), 
+        MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("e8").ok(), start_file: None, start_rank: None, castle: None, promotion: Some(PieceType::Queen)} 
     );
 }

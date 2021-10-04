@@ -50,12 +50,71 @@ impl Game {
         Self::default()
     }
 
+    pub fn try_move_positions(&mut self, pos1: String, pos2: String, promotion_callback: fn() -> PieceType) -> Result<MoveResult, MoveError> {
+        let pos1: Position = Position::try_from(&pos1[..]).map_err(|_| MoveError::InvalidMoveRequest)?;
+        let pos2: Position = Position::try_from(&pos2[..]).map_err(|_| MoveError::InvalidMoveRequest)?;
+        
+        if pos1 == pos2 {
+            return Err(MoveError::InvalidMovement);
+        }
+
+        let mut found_move: Move = match self.get_piece(pos1).as_ref() {
+            Some(piece) => {
+                if piece.colour == self.current_turn {
+                    self.find_move(pos1, pos2)?
+                } else {
+                    return Err(MoveError::InvalidColour)
+                }
+            },
+            None => return Err(MoveError::NoPiece),
+        };
+
+        // Specify promotion piece
+        if let MoveType::Promotion(_, _, promotion_piece) = &mut found_move.kind {
+            *promotion_piece = promotion_callback();
+        } 
+
+        return self.try_move(found_move);
+    }
+
+    pub fn from_san_moves(input: Vec<&str>) -> Option<Self> {
+        let mut game = Game::new();
+        for x in input {
+            if game.attempt_san_move(x).is_err() {
+                return None;
+            }
+        }
+        return Some(game);
+    }
+
+    pub fn attempt_san_move(&mut self, value: &str) -> Result<MoveResult, MoveError> {
+        let move_request = MoveRequestSAN::try_from(value).map_err(|_| MoveError::InvalidMoveRequest)?;
+        let mut found_move = self.try_san_request(&move_request).map_err(|_| MoveError::InvalidMoveRequest)?;
+        
+        // Specify promotion piece
+        if let MoveType::Promotion(_, _, promotion_piece) = &mut found_move.kind {
+            *promotion_piece = move_request.promotion.unwrap();
+        } 
+
+        return self.try_move(found_move);
+    }
+
     pub fn get_current_count(&self) -> u8 {
         self.count
     }
 
     pub fn get_current_colour(&self) -> Colour {
         self.current_turn
+    }
+
+    pub fn save_game(&self, filename: &str) {
+        let serialised = serde_json::to_string(self).expect("JSON encoding error");
+        fs::write(filename, serialised).expect("Unable to write file");
+    }
+
+    pub fn load_game(filename: &str) -> Self {
+        let serialised = fs::read_to_string(filename).expect("Unable to read file");
+        serde_json::from_str(&serialised).unwrap()
     }
 
     fn get_piece(&self, pos: Position) -> &Option<Piece> {
@@ -157,33 +216,6 @@ impl Game {
                 self.swap_pieces(*p2, *p1);
             },
         }
-    }
-
-    pub fn try_move_positions(&mut self, pos1: String, pos2: String, promotion_callback: fn() -> PieceType) -> Result<MoveResult, MoveError> {
-        let pos1: Position = Position::try_from(&pos1[..]).map_err(|_| MoveError::InvalidMoveRequest)?;
-        let pos2: Position = Position::try_from(&pos2[..]).map_err(|_| MoveError::InvalidMoveRequest)?;
-        
-        if pos1 == pos2 {
-            return Err(MoveError::InvalidMovement);
-        }
-
-        let mut found_move: Move = match self.get_piece(pos1).as_ref() {
-            Some(piece) => {
-                if piece.colour == self.current_turn {
-                    self.find_move(pos1, pos2)?
-                } else {
-                    return Err(MoveError::InvalidColour)
-                }
-            },
-            None => return Err(MoveError::NoPiece),
-        };
-
-        // Specify promotion piece
-        if let MoveType::Promotion(_, _, promotion_piece) = &mut found_move.kind {
-            *promotion_piece = promotion_callback();
-        } 
-
-        return self.try_move(found_move);
     }
 
     fn check_move(&mut self, move_: &Move, undo: bool) -> Result<(), MoveError> {
@@ -465,22 +497,12 @@ impl Game {
         return self.is_attacked(colour, king_pos);
     }
 
-    pub fn save_game(&self, filename: &str) {
-        let serialised = serde_json::to_string(self).expect("JSON encoding error");
-        fs::write(filename, serialised).expect("Unable to write file");
-    }
-
-    pub fn load_game(filename: &str) -> Self {
-        let serialised = fs::read_to_string(filename).expect("Unable to read file");
-        serde_json::from_str(&serialised).unwrap()
-    }
-
-    fn try_san_request(&mut self, move_request: MoveRequestSAN) -> Result<Move, &'static str> {
+    fn try_san_request(&mut self, move_request: &MoveRequestSAN) -> Result<Move, &'static str> {
         // Castling
-        if let Some(castle_type) = move_request.castle {
+        if let Some(castle_type) = &move_request.castle {
             // TODO: check castle conditions in a less forced way
             let king_pos = self.get_king_pos(self.get_current_colour());
-            let diff = if castle_type == CastleType::Long { PosDiff(-2 , 0) } else { PosDiff(2, 0) };
+            let diff = if *castle_type == CastleType::Long { PosDiff(-2 , 0) } else { PosDiff(2, 0) };
             let second_pos = king_pos.add(diff).map_err(|_| "King in the wrong position to castle")?;
             return self.find_move(king_pos, second_pos).map_err(|_| "Invalid castle conditions");
         }
@@ -504,18 +526,6 @@ impl Game {
             1 => Ok(potential_moves.remove(0)),
             _ => Err("This move has multiple possibilities. Please make it more specific."),
         }
-    }
-
-    pub fn attempt_san_move(&mut self, value: &str, promotion_callback: fn() -> PieceType) -> Result<MoveResult, MoveError> {
-        let move_request = MoveRequestSAN::try_from(value).map_err(|_| MoveError::InvalidMoveRequest)?;
-        let mut found_move = self.try_san_request(move_request).map_err(|_| MoveError::InvalidMoveRequest)?;
-        
-        // Specify promotion piece
-        if let MoveType::Promotion(_, _, promotion_piece) = &mut found_move.kind {
-            *promotion_piece = promotion_callback();
-        } 
-
-        return self.try_move(found_move);
     }
 }
 
@@ -588,6 +598,12 @@ fn test_find_move() {
 
 }
 
+#[test]
+fn test_san_moves() {
+    let mut game = Game::from_san_moves(vec!["Nc3", "e5", "Nf3", "a6", "Nb5", "a5"]).unwrap();
+    assert!(game.attempt_san_move("Nd4").is_err());
+    assert!(game.attempt_san_move("Nbd4").is_ok())
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Piece {
