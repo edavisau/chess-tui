@@ -431,43 +431,11 @@ impl Game {
                             2 => CastleType::Short,
                             _ => unreachable!(),
                         };
-                        let row = if self.current_turn == Colour::White { 0 } else { 7 };
-                        let rook_position: Position = match castle_type {
-                            CastleType::Long => (0, row).try_into().unwrap(),
-                            CastleType::Short => (7, row).try_into().unwrap(),
-                        };
-
-                        // King must not have moved
-                        if piece.history.len() > 0 {
-                            return Err(MoveError::InvalidCastleConditions);
-                        }
-                        // Rook must not have moved
-                        match self.get_piece(rook_position) {
-                            Some(p) if p.history.len() == 0 => (),
-                            _ => return Err(MoveError::InvalidCastleConditions),
-                        }
-                        // No pieces between king and rook
-                        for pos in (if castle_type == CastleType::Long { 1..=3 } else { 5..=6 })
-                                .map(|x| Position::try_from((x, row)).unwrap()) {
-                            if let Some(_) = self.get_piece(pos) {
-                                return Err(MoveError::InvalidCastleConditions)
-                            }
-                        }
-                        // King is not in check
-                        if self.in_check {
+                        if self.can_castle(castle_type, piece.colour) {
+                            return Ok(Move::new(piece.kind, MoveType::Castle(castle_type)));
+                        } else {
                             return Err(MoveError::InvalidCastleConditions)
                         }
-                        // Square next to king is in check
-                        let intermediate_square_position: Position = if castle_type == CastleType::Long { 
-                            (3, row).try_into().unwrap()
-                        } else { 
-                            (5, row).try_into().unwrap()
-                        };
-                        if self.is_attacked(piece.colour, intermediate_square_position) {
-                            return Err(MoveError::InvalidCastleConditions)
-                        }
-                        // We can ignore checking if end position is in check. It will be checked later.
-                        return Ok(Move::new(piece.kind, MoveType::Castle(castle_type)))
                     },
                     _ => return Err(MoveError::InvalidMovement),
                 }
@@ -497,14 +465,45 @@ impl Game {
         return self.is_attacked(colour, king_pos);
     }
 
+    fn can_castle(&self, castle_type: CastleType, colour: Colour) -> bool {
+        let row = if self.current_turn == Colour::White { 0 } else { 7 };
+        let king = self.get_piece(self.get_king_pos(colour)).as_ref().unwrap(); // King has to exist
+        let rook = self.get_piece(match castle_type {
+            CastleType::Long => (0, row).try_into().unwrap(),
+            CastleType::Short => (7, row).try_into().unwrap(),
+        }).as_ref().unwrap();
+
+        // King and rook must not have moved
+        if king.history.len() > 0 || rook.history.len() > 0 {
+            return false;
+        }
+
+        // No pieces between king and rook
+        let files_to_check = if castle_type == CastleType::Long { 1..=3 } else { 5..=6 };
+        for pos in files_to_check.map(|x| Position::try_from((x, row)).unwrap()) {
+            if let Some(_) = self.get_piece(pos) {
+                return false;
+            }
+        }
+
+        // King must not be in check or move through a square in check
+        let files_to_check = if castle_type == CastleType::Long { 2..=4 } else { 4..=6 };
+        for pos in files_to_check.map(|x| Position::try_from((x, row)).unwrap()) {
+            if self.is_attacked(colour, pos) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     fn try_san_request(&mut self, move_request: &MoveRequestSAN) -> Result<Move, &'static str> {
         // Castling
-        if let Some(castle_type) = &move_request.castle {
-            // TODO: check castle conditions in a less forced way
-            let king_pos = self.get_king_pos(self.get_current_colour());
-            let diff = if *castle_type == CastleType::Long { PosDiff(-2 , 0) } else { PosDiff(2, 0) };
-            let second_pos = king_pos.add(diff).map_err(|_| "King in the wrong position to castle")?;
-            return self.find_move(king_pos, second_pos).map_err(|_| "Invalid castle conditions");
+        if let Some(castle_type) = move_request.castle {
+            if self.can_castle(castle_type, self.get_current_colour()) {
+                return Ok(Move::new(PieceType::King, MoveType::Castle(castle_type)));
+            } else {
+                return Err("Invalid castle conditions");
+            }
         }
 
         let pieces: Vec<&Piece> = self.get_all_colour_pieces(self.get_current_colour())

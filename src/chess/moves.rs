@@ -58,7 +58,7 @@ pub(super) enum MoveType {
     EnPassant(Position, Position)
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Copy)]
 pub(super) enum CastleType {
     Long,
     Short,
