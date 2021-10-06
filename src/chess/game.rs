@@ -70,13 +70,16 @@ impl Game {
         };
 
         // Specify promotion piece
-        if let MoveType::Promotion(_, _, promotion_piece) = &mut found_move.kind {
-            *promotion_piece = promotion_callback();
-        } 
+        if let MoveType::PawnPush(ref mut promotion_piece) = found_move.kind {
+            *promotion_piece = Some(promotion_callback());
+        } else if let MoveType::PawnAttack(_, ref mut promotion_piece) = found_move.kind {
+            *promotion_piece = Some(promotion_callback());
+        }
 
         return self.try_move(found_move);
     }
 
+    #[allow(dead_code)]
     pub fn from_san_moves(input: Vec<&str>) -> Option<Self> {
         let mut game = Game::new();
         for x in input {
@@ -92,9 +95,9 @@ impl Game {
         let mut found_move = self.try_san_request(&move_request).map_err(|_| MoveError::InvalidMoveRequest)?;
         
         // Specify promotion piece
-        if let MoveType::Promotion(_, _, promotion_piece) = &mut found_move.kind {
-            *promotion_piece = move_request.promotion.unwrap();
-        } 
+        if let MoveType::PawnAttack(_, Some(piece_type)) | MoveType::PawnPush(Some(piece_type)) = &mut found_move.kind {
+            *piece_type = move_request.promotion.unwrap();
+        }
 
         return self.try_move(found_move);
     }
@@ -154,9 +157,9 @@ impl Game {
 
     fn do_move(&mut self, move_: &Move) {
         match &move_.kind {
-            MoveType::Standard(p1, p2) => {
+            MoveType::Standard(p2) => {
                 self.capture_piece(*p2);
-                self.swap_pieces(*p1, *p2);
+                self.swap_pieces(move_.pos, *p2);
             },
             MoveType::Castle(castle_type) => {
                 let row = if self.current_turn == Colour::White { 0 } else { 7 };
@@ -171,25 +174,51 @@ impl Game {
                     },
                 }
             },
-            MoveType::Promotion(p1, p2, piece_type) => {
-                self.capture_piece(*p2);
-                self.swap_pieces(*p1, *p2);
+            MoveType::PawnAttack(direction, promotion) => {
+                let diff = if direction == &Direction::Left { 
+                    PosDiff(-1, 1).as_white(self.get_current_colour())
+                } else { 
+                    PosDiff(1, 1).as_white(self.get_current_colour()) 
+                };
+                let pos2 = move_.pos.add(diff).unwrap();
+                self.capture_piece(pos2);
+                self.swap_pieces(move_.pos, pos2);
 
-                // Update piece type
-                self.get_piece_mut(*p2).as_mut().unwrap().kind = *piece_type;
+                if let Some(piece_type) = promotion {
+                    self.get_piece_mut(pos2).as_mut().unwrap().kind = *piece_type;
+                }
             },
-            MoveType::EnPassant(p1, p2) => {
-                self.swap_pieces(*p1, *p2);
+            MoveType::EnPassant(direction) => {
+                let diff = if direction == &Direction::Left { 
+                    PosDiff(-1, 1).as_white(self.get_current_colour())
+                } else { 
+                    PosDiff(1, 1).as_white(self.get_current_colour()) 
+                };
+                let pos2 = move_.pos.add(diff).unwrap();
+                self.swap_pieces(move_.pos, pos2);
                 let diff = PosDiff(0, -1).as_white(self.current_turn);
-                self.capture_piece(p2.add(diff).unwrap());
+                self.capture_piece(pos2.add(diff).unwrap());
+            },
+            MoveType::PawnPush(promotion) => {
+                let diff = PosDiff(0, 1).as_white(self.get_current_colour());
+                let pos2 = move_.pos.add(diff).unwrap();
+                self.swap_pieces(move_.pos, pos2);
+                if let Some(piece_type) = promotion {
+                    self.get_piece_mut(pos2).as_mut().unwrap().kind = *piece_type;
+                }
+            },
+            MoveType::PawnStart => {
+                let diff = PosDiff(0, 2).as_white(self.get_current_colour());
+                let pos2 = move_.pos.add(diff).unwrap();
+                self.swap_pieces(move_.pos, pos2);
             },
         }
     }
 
     fn undo_move(&mut self, move_: &Move) {
         match &move_.kind {
-            MoveType::Standard(p1, p2) => {
-                self.swap_pieces(*p2, *p1);
+            MoveType::Standard(p2) => {
+                self.swap_pieces(*p2, move_.pos);
                 self.uncapture_piece(*p2);
             },
             MoveType::Castle(castle_type) => {
@@ -205,15 +234,41 @@ impl Game {
                     },
                 }
             },
-            MoveType::Promotion(p1, p2, _) => {
-                self.get_piece_mut(*p2).as_mut().unwrap().kind = PieceType::Pawn;
-                self.swap_pieces(*p2, *p1);
-                self.uncapture_piece(*p2);
+            MoveType::PawnAttack(direction, promotion) => {
+                let diff = if direction == &Direction::Left {
+                    PosDiff(-1, 1).as_white(self.get_current_colour())
+                } else {
+                    PosDiff(1, 1).as_white(self.get_current_colour())
+                };
+                let p2 = move_.pos.add(diff).unwrap();
+                if let Some(_) = promotion {
+                    self.get_piece_mut(p2).as_mut().unwrap().kind = PieceType::Pawn;
+                }
+                self.swap_pieces(p2, move_.pos);
+                self.uncapture_piece(p2);
             },
-            MoveType::EnPassant(p1, p2) => {
-                let diff = PosDiff(0, -1).as_white(self.current_turn);
+            MoveType::PawnPush(promotion) => {
+                let p2 = move_.pos.add(PosDiff(0, 1).as_white(self.get_current_colour())).unwrap();
+                if let Some(_) = promotion {
+                    self.get_piece_mut(p2).as_mut().unwrap().kind = PieceType::Pawn;
+                }
+                self.swap_pieces(p2, move_.pos);
+                self.uncapture_piece(p2);
+            }
+            MoveType::EnPassant(direction) => {
+                let diff = if direction == &Direction::Left {
+                    PosDiff(-1, 1).as_white(self.get_current_colour())
+                } else {
+                    PosDiff(1, 1).as_white(self.get_current_colour())
+                };
+                let p2 = move_.pos.add(diff).unwrap();
                 self.uncapture_piece(p2.add(diff).unwrap());
-                self.swap_pieces(*p2, *p1);
+                self.swap_pieces(p2, move_.pos);
+            },
+            MoveType::PawnStart => {
+                let p2 = move_.pos.add(PosDiff(0, 2).as_white(self.get_current_colour())).unwrap();
+                self.swap_pieces(p2, move_.pos);
+                self.uncapture_piece(p2);
             },
         }
     }
@@ -371,31 +426,30 @@ impl Game {
                     PosDiff(0, 2) if pos_as_white.1 == 1 => {
                         if let &Some(_) = self.get_piece(pos2) { return Err(MoveError::PositionBlocked) }
                         can_reach_between(self, pos1, diff)?;
-                        return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)));
+                        return Ok(Move::new(pos1, MoveType::PawnStart));
                     },
                     PosDiff(0, 1) => { // Move forward
                         if let &Some(_) = self.get_piece(pos2) { return Err(MoveError::PositionBlocked) }
                         if promotion {
-                            return Ok(Move::new(piece.kind, MoveType::Promotion(pos1, pos2, PieceType::Queen)));
+                            return Ok(Move::new(pos1, MoveType::PawnPush(Some(PieceType::Queen))));
                         } else {
-                            return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)));
+                            return Ok(Move::new(pos1, MoveType::PawnPush(None)));
                         }
                     }, 
                     PosDiff(1|-1, 1) => {  // Attack or En Passant
                         if let &Some(_) = self.get_piece(pos2) { // Standard attack
+                            let direction = if diff_as_white.0 == -1 { Direction::Left } else { Direction::Right };
                             if promotion {
-                                return Ok(Move::new(piece.kind, MoveType::Promotion(pos1, pos2, PieceType::Queen)));
+                                return Ok(Move::new(pos1, MoveType::PawnAttack(direction, Some(PieceType::Queen))));
                             } else {
-                                return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)));
+                                return Ok(Move::new(pos1, MoveType::PawnAttack(direction,  None)));
                             }
                         } else { // En Passant
                             let last_move = self.moves.last().ok_or(MoveError::InvalidEnPassantConditions)?;
-                            if pos_as_white.1 == 4 && last_move.piece == PieceType::Pawn {
-                                if let MoveType::Standard(last_pos1, last_pos2) = last_move.kind {
-                                    if last_pos1 == pos1.add(PosDiff(diff.0, diff.1 * 2)).unwrap() &&
-                                            last_pos2 == pos1.add(PosDiff(diff.0, 0)).unwrap() {
-                                        return Ok(Move::new(piece.kind, MoveType::EnPassant(pos1, pos2)));
-                                    }
+                            let direction = if diff_as_white.0 == -1 { Direction::Left } else { Direction::Right };
+                            if let Move { pos: last_pos, kind: MoveType::PawnStart } = last_move {
+                                if *last_pos == pos1.add(PosDiff(diff.0, diff.1 * 2)).unwrap() {
+                                    return Ok(Move::new(pos1, MoveType::EnPassant(direction)))
                                 }
                             }
                             return Err(MoveError::InvalidEnPassantConditions);
@@ -407,24 +461,24 @@ impl Game {
             PieceType::Rook => {
                 if !((diff.0 == 0) || (diff.1 == 0)) {return Err(MoveError::InvalidMovement)}
                 can_reach_between(self, pos1, diff)?;
-                return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)));
+                return Ok(Move::new(pos1, MoveType::Standard(pos2)));
             },
             PieceType::Knight => {
                 if !((diff.0.abs() == 2 && diff.1.abs() == 1) || (diff.0.abs() == 1 && diff.1.abs() == 2)) {return Err(MoveError::InvalidMovement)}
-                return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)));
+                return Ok(Move::new(pos1, MoveType::Standard(pos2)));
             },
             PieceType::Bishop => {
                 if !((diff.0 == -diff.1) || (diff.0 == diff.1)) {return Err(MoveError::InvalidMovement)}
                 can_reach_between(self, pos1, diff)?;
-                return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)));
+                return Ok(Move::new(pos1, MoveType::Standard(pos2)));
             },
             PieceType::Queen => {
                 can_reach_between(self, pos1, diff)?;
-                return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2)));
+                return Ok(Move::new(pos1, MoveType::Standard(pos2)));
             },
             PieceType::King => {
                 match diff {
-                    PosDiff(0|-1|1, 0|-1|1) => return Ok(Move::new(piece.kind, MoveType::Standard(pos1, pos2))),
+                    PosDiff(0|-1|1, 0|-1|1) => return Ok(Move::new(pos1, MoveType::Standard(pos2))),
                     PosDiff(-2|2, 0) => { // Castle
                         let castle_type = match diff.0 {
                             -2 => CastleType::Long,
@@ -432,7 +486,7 @@ impl Game {
                             _ => unreachable!(),
                         };
                         if self.can_castle(castle_type, piece.colour) {
-                            return Ok(Move::new(piece.kind, MoveType::Castle(castle_type)));
+                            return Ok(Move::new(pos1, MoveType::Castle(castle_type)));
                         } else {
                             return Err(MoveError::InvalidCastleConditions)
                         }
@@ -503,7 +557,8 @@ impl Game {
         // Castling
         if let Some(castle_type) = move_request.castle {
             if self.can_castle(castle_type, self.get_current_colour()) {
-                return Ok(Move::new(PieceType::King, MoveType::Castle(castle_type)));
+                let king_pos = self.get_king_pos(self.get_current_colour());
+                return Ok(Move::new(king_pos, MoveType::Castle(castle_type)));
             } else {
                 return Err("Invalid castle conditions");
             }
@@ -578,7 +633,7 @@ fn test_find_move() {
     // Pawn E2 -> E4
     assert_eq!(
         game.find_move("e2".try_into().unwrap(), "e4".try_into().unwrap()).unwrap(),
-        Move::new(PieceType::Pawn, MoveType::Standard("e2".try_into().unwrap(), "e4".try_into().unwrap()))
+        Move::new("e2".try_into().unwrap(), MoveType::PawnStart)
     );
 
     // Queen D1 -> B3

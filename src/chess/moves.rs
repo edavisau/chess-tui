@@ -17,15 +17,15 @@ fn parse_rank(value: &char) -> Option<usize> {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(super) struct Move {
+    pub(super) pos: Position,
     pub(super) kind: MoveType,
-    pub(super) piece: PieceType,
 }
 
 impl Move {
-    pub fn new(piece: PieceType, kind: MoveType) -> Self {
+    pub fn new(pos: Position, kind: MoveType) -> Self {
         Self {
             kind,
-            piece,
+            pos,
         }
     }
 }
@@ -52,10 +52,18 @@ pub(crate) enum MoveResult {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(super) enum MoveType {
-    Standard(Position, Position),
+    Standard(Position),
     Castle(CastleType),
-    Promotion(Position, Position, PieceType),
-    EnPassant(Position, Position)
+    PawnAttack(Direction, Option<PieceType>),
+    PawnPush(Option<PieceType>),
+    PawnStart,
+    EnPassant(Direction)
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Copy)]
+pub(super) enum Direction {
+    Left,
+    Right
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Copy)]
