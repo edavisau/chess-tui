@@ -40,7 +40,7 @@ pub(crate) enum MoveError {
     InvalidCastleConditions,
     InvalidEnPassantConditions,
     CausesCheck,
-    InvalidMoveRequest,
+    InvalidMoveRequest(String),
 }
 
 #[derive(Debug, PartialEq)]

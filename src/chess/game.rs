@@ -51,8 +51,8 @@ impl Game {
     }
 
     pub fn try_move_positions(&mut self, pos1: String, pos2: String, promotion_callback: fn() -> PieceType) -> Result<MoveResult, MoveError> {
-        let pos1: Position = Position::try_from(&pos1[..]).map_err(|_| MoveError::InvalidMoveRequest)?;
-        let pos2: Position = Position::try_from(&pos2[..]).map_err(|_| MoveError::InvalidMoveRequest)?;
+        let pos1: Position = Position::try_from(&pos1[..]).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
+        let pos2: Position = Position::try_from(&pos2[..]).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
         
         if pos1 == pos2 {
             return Err(MoveError::InvalidMovement);
@@ -91,8 +91,8 @@ impl Game {
     }
 
     pub fn attempt_san_move(&mut self, value: &str) -> Result<MoveResult, MoveError> {
-        let move_request = MoveRequestSAN::try_from(value).map_err(|_| MoveError::InvalidMoveRequest)?;
-        let mut found_move = self.try_san_request(&move_request).map_err(|_| MoveError::InvalidMoveRequest)?;
+        let move_request = MoveRequestSAN::try_from(value).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
+        let mut found_move = self.try_san_request(&move_request).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
         
         // Specify promotion piece
         if let MoveType::PawnAttack(_, Some(piece_type)) | MoveType::PawnPush(Some(piece_type)) = &mut found_move.kind {
