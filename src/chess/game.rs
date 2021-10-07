@@ -7,14 +7,20 @@ use super::moves::*;
 
 use serde::{Serialize, Deserialize};
 
-
+/// Chess game representing the main interface for the game.
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Game {
+    /// 8x8 board containing a piece or an empty square.
     board: Vec<Vec<Option<Piece>>>,
+    /// The colour whose turn it is to move
     current_turn: Colour,
+    /// The current numbers of moves performed in the game
     count: u8,
+    /// A list of historical moves. Acts as a stack to allow undoing moves in the right order.
     moves: Vec<Move>,
+    /// A list of pieces which have been captured by the other team.
     captured: Vec<Piece>,
+    /// Indicates whether the colour to next move is in check
     in_check: bool,
 }
 
@@ -46,6 +52,7 @@ impl Default for Game {
 }
 
 impl Game {
+    /// Initialises a brand new chess game
     pub fn new() -> Self {
         Self::default()
     }
