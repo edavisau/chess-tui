@@ -60,7 +60,8 @@ impl Game {
         Self::default()
     }
 
-    pub fn try_move_positions(&mut self, pos1: String, pos2: String, promotion_callback: fn() -> PieceType) -> Result<MoveResult, MoveError> {
+    pub fn try_move_positions<F>(&mut self, pos1: String, pos2: String, promotion_callback: F) -> Result<MoveResult, MoveError> where
+        F: Fn() -> PieceType {
         let pos1: Position = Position::try_from(&pos1[..]).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
         let pos2: Position = Position::try_from(&pos2[..]).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
         
