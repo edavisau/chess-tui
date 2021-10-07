@@ -22,6 +22,8 @@ pub(crate) struct Game {
     captured: Vec<Piece>,
     /// Indicates whether the colour to next move is in check
     in_check: bool,
+    /// Indicates which colour has offered to draw. If both colours offer draw (i.e. the other colour accepts), then the game ends.
+    draw_offer: Option<Colour>
 }
 
 impl Default for Game {
@@ -47,6 +49,7 @@ impl Default for Game {
             moves: Vec::new(),
             captured: Vec::new(),
             in_check: false,
+            draw_offer: None,
         }
     }
 }
@@ -122,6 +125,27 @@ impl Game {
     pub fn load_game(filename: &str) -> Self {
         let serialised = fs::read_to_string(filename).expect("Unable to read file");
         serde_json::from_str(&serialised).unwrap()
+    }
+
+    /// Offers a draw. Returns true if the both sides have agreed to a draw.
+    pub fn offer_draw(&mut self) -> bool {
+        match self.draw_offer {
+            Some(colour) if colour == self.current_turn => return false,
+            Some(_) => return true,
+            None => {
+                self.draw_offer = Some(self.current_turn);
+                return false;
+            },
+        }
+    }
+
+    /// Cancels a previously-offered request to draw.
+    pub fn cancel_draw(&mut self) {
+        if let Some(colour) = self.draw_offer {
+            if colour == self.current_turn {
+                self.draw_offer = None;
+            }
+        }
     }
 
     fn get_piece(&self, pos: Position) -> &Option<Piece> {

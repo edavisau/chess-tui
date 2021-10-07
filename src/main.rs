@@ -12,6 +12,9 @@ enum Action {
     SaveGame(String),
     QuitGame,
     PrintHelp,
+    Resign,
+    OfferDraw,
+    CancelDraw,
 }
 
 fn print_help() {
@@ -71,6 +74,9 @@ fn request_action() -> Result<Action, &'static str> {
                 }
             },
             "h" => return Ok(Action::PrintHelp),
+            "r" => return Ok(Action::Resign),
+            "od" => return Ok(Action::OfferDraw),
+            "cd" => return Ok(Action::CancelDraw),
             _ => return Err("Invalid command. Commands are 's' or 'q'")
         }
     }
@@ -117,6 +123,23 @@ fn play_game(mut game: Game) {
                     print_help(); 
                     continue;
                 },
+                Action::Resign => {
+                    println!("You have resigned. {} wins!", game.get_current_colour().flip());
+                    return
+                },
+                Action::OfferDraw => {
+                    let game_ended = game.offer_draw();
+                    if game_ended {
+                        println!("Both sides have agreed to a draw.");
+                        return;
+                    } else {
+                        continue;
+                    }
+                },
+                Action::CancelDraw => {
+                    game.cancel_draw();
+                    continue;
+                }
             }
 
             if let Some(result) = move_attempted {
