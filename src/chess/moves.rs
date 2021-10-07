@@ -47,7 +47,8 @@ pub(crate) enum MoveError {
 pub(crate) enum MoveResult {
     MovePlayed,
     Check(Colour),
-    Checkmate(Colour)
+    Checkmate(Colour),
+    Stalemate(Colour),
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

@@ -289,6 +289,22 @@ impl Game {
         Ok(())
     }
 
+    /// Checks if there are any moves left for the current turn. If false, the game is over by checkmate or stalemate depending on whether the colour is in check.
+    fn any_moves_left(&mut self) -> bool {
+        let potential_moves = self.get_all_colour_pieces(self.current_turn)
+            .map(|x| self.get_available_moves(x.position))
+            .flatten()
+            .map(|(pos1, pos2)| self.find_move(pos1, pos2))
+            .filter_map(|x| x.ok())
+            .collect::<Vec<Move>>();
+
+        return potential_moves.iter()
+            .map(|x| self.check_move(x, true))
+            .filter_map(|x| x.ok())
+            .next()
+            .is_some();
+    }
+
     fn try_move(&mut self, move_: Move) -> Result<MoveResult, MoveError> {
         self.check_move(&move_, false)?;
 
@@ -297,26 +313,12 @@ impl Game {
         self.count += 1;
         self.current_turn = self.current_turn.flip();
         self.in_check = self.is_in_check(self.current_turn);
-        if self.in_check { // Is it checkmate???
-            let potential_moves = self.get_all_colour_pieces(self.current_turn)
-                .map(|x| self.get_available_moves(x.position))
-                .flatten()
-                .map(|(pos1, pos2)| self.find_move(pos1, pos2))
-                .filter_map(|x| x.ok())
-                .collect::<Vec<Move>>();
-
-            let checkmate = potential_moves.iter()
-                .map(|x| self.check_move(x, true))
-                .filter_map(|x| x.ok())
-                .next()
-                .is_none();
-            if checkmate {
-                return Ok(MoveResult::Checkmate(self.current_turn));
-            } else {
-                return Ok(MoveResult::Check(self.current_turn));
-            }
-        } else {
-            return Ok(MoveResult::MovePlayed);
+        let moves_left = self.any_moves_left();
+        match (self.in_check, moves_left) {
+            (true, true) => return Ok(MoveResult::Check(self.current_turn)),
+            (true, false) => return Ok(MoveResult::Checkmate(self.current_turn)),
+            (false, true) => return Ok(MoveResult::MovePlayed),
+            (false, false) => return Ok(MoveResult::Stalemate(self.current_turn.flip())),
         }
     }
 
@@ -757,5 +759,16 @@ mod tests {
         let game = Game::from_san_moves(vec!["e4", "e5", "Qh5", "h6", "Qe5"]).unwrap();
         assert!(game.is_in_check(Colour::Black));
         assert!(!game.is_in_check(Colour::White));
+    }
+
+    #[test]
+    fn test_stalemate() {
+        let mut game = Game::from_san_moves(vec!["e3", "a5", "Qh5", "Ra6", "Qxa5", "h5", "h4", "Rah6",
+                                                        "Qxc7", "f6", "Qxd7+", "Kf7", "Qxb7", "Qd3", "Qxb8", "Qh7",
+                                                        "Qxc8", "Kg6"]).unwrap();
+        assert_eq!(
+            game.try_move_san("Qe6").unwrap(),
+            MoveResult::Stalemate(Colour::White)
+        );
     }
 }

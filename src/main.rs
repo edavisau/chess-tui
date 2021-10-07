@@ -127,11 +127,16 @@ fn play_game(mut game: Game) {
                         println!("{}", game);
                         println!("Game over, {} has been checkmated! {} is the winner!", colour, colour.flip());
                         return;
-                    }
+                    },
+                    Ok(MoveResult::Stalemate(colour)) => {
+                        println!("{}", game);
+                        println!("Game over, {} has caused a stalemate. This is a draw.", colour);
+                        return;
+                    },
                     Err(e) => {
                         println!("Invalid move: {:?}", e);
                         continue;
-                    }
+                    },
                 }
             }
             
