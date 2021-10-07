@@ -148,58 +148,6 @@ impl PosDiff {
     }
 }
 
-#[test]
-fn test_position_try_from_str() {
-    let good1 = "c3".to_string();
-    assert_eq!(Position::try_from(&good1[..]), Ok(Position(2, 2)));
-    let good2 = "h8".to_string();
-    assert_eq!(Position::try_from(&good2[..]), Ok(Position(7, 7)));
-    let bad1 = "a9".to_string();
-    assert!(Position::try_from(&bad1[..]).is_err());
-    let bad2 = "k1".to_string();
-    assert!(Position::try_from(&bad2[..]).is_err());
-    let bad3 = "asfd".to_string();
-    assert!(Position::try_from(&bad3[..]).is_err());
-}
-
-#[test]
-fn test_position_try_from_usize_pair() {
-    assert_eq!(Position::try_from((2, 2)), Ok(Position(2, 2)));
-    assert_eq!(Position::try_from((7, 7)), Ok(Position(7, 7)));
-    assert!(Position::try_from((1, 9)).is_err());
-}
-
-#[test]
-fn test_position_add() {
-    let position = Position::try_from("g8").unwrap();
-    assert_eq!(position.add(PosDiff(-3, -2)).unwrap(), Position::try_from("d6").unwrap());
-    assert!(position.add(PosDiff(2, 1)).is_err());
-}
-
-#[test]
-fn test_position_diff() {
-    let pos1 = Position::try_from("g8").unwrap();
-    let pos2 = Position::try_from("a2").unwrap();
-    let pos3 = Position::try_from("c1").unwrap();
-    assert_eq!(Position::diff(pos1, pos2), PosDiff(6, 6));
-    assert_eq!(Position::diff(pos2, pos1), PosDiff(-6, -6));
-    assert_eq!(Position::diff(pos3, pos2), PosDiff(2, -1));
-}
-
-#[test]
-fn test_position_as_white() {
-    let pos1 = Position::try_from("g8").unwrap();
-    assert_eq!(pos1.as_white(Colour::Black), Position::try_from("b1").unwrap());
-    assert_eq!(pos1.as_white(Colour::White), pos1);
-}
-
-#[test]
-fn test_posdiff_as_white() {
-    let diff = PosDiff(3, -2);
-    assert_eq!(diff.as_white(Colour::Black), PosDiff(-3, 2));
-    assert_eq!(diff.as_white(Colour::White), diff);
-}
-
 #[derive(Debug, PartialEq)]
 pub(super) struct MoveRequestSAN {
     pub(super) piece: PieceType,
@@ -314,40 +262,97 @@ impl TryFrom<&str> for MoveRequestSAN {
     }
 }
 
-#[test]
-fn test_san_moves() {
-    // Castling
-    assert_eq!(
-        MoveRequestSAN::try_from("O-O-O").unwrap(), 
-        MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Long), promotion: None} 
-    );
-    assert_eq!(
-        MoveRequestSAN::try_from("O-O").unwrap(), 
-        MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Short), promotion: None} 
-    );
-    // Normal moves
-    assert_eq!(
-        MoveRequestSAN::try_from("Re5").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Rook, end_pos: Position::try_from("e5").ok(), start_file: None, start_rank: None, castle: None, promotion: None} 
-    );
-    assert_eq!(
-        MoveRequestSAN::try_from("Ba1").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Bishop, end_pos: Position::try_from("a1").ok(), start_file: None, start_rank: None, castle: None, promotion: None} 
-    );
-    assert_eq!(
-        MoveRequestSAN::try_from("e4#").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("e4").ok(), start_file: None, start_rank: None, castle: None, promotion: None} 
-    );
-    assert_eq!(
-        MoveRequestSAN::try_from("gxh7").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("h7").ok(), start_file: Some(6), start_rank: None, castle: None, promotion: None} 
-    );
-    assert_eq!(
-        MoveRequestSAN::try_from("Nb1xc3").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Knight, end_pos: Position::try_from("c3").ok(), start_file: Some(1), start_rank: Some(0), castle: None, promotion: None} 
-    );
-    assert_eq!(
-        MoveRequestSAN::try_from("e8=Q").unwrap(), 
-        MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("e8").ok(), start_file: None, start_rank: None, castle: None, promotion: Some(PieceType::Queen)} 
-    );
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_san_moves() {
+        // Castling
+        assert_eq!(
+            MoveRequestSAN::try_from("O-O-O").unwrap(), 
+            MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Long), promotion: None} 
+        );
+        assert_eq!(
+            MoveRequestSAN::try_from("O-O").unwrap(), 
+            MoveRequestSAN {piece: PieceType::King, end_pos: None, start_file: None, start_rank: None, castle: Some(CastleType::Short), promotion: None} 
+        );
+        // Normal moves
+        assert_eq!(
+            MoveRequestSAN::try_from("Re5").unwrap(), 
+            MoveRequestSAN {piece: PieceType::Rook, end_pos: Position::try_from("e5").ok(), start_file: None, start_rank: None, castle: None, promotion: None} 
+        );
+        assert_eq!(
+            MoveRequestSAN::try_from("Ba1").unwrap(), 
+            MoveRequestSAN {piece: PieceType::Bishop, end_pos: Position::try_from("a1").ok(), start_file: None, start_rank: None, castle: None, promotion: None} 
+        );
+        assert_eq!(
+            MoveRequestSAN::try_from("e4#").unwrap(), 
+            MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("e4").ok(), start_file: None, start_rank: None, castle: None, promotion: None} 
+        );
+        assert_eq!(
+            MoveRequestSAN::try_from("gxh7").unwrap(), 
+            MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("h7").ok(), start_file: Some(6), start_rank: None, castle: None, promotion: None} 
+        );
+        assert_eq!(
+            MoveRequestSAN::try_from("Nb1xc3").unwrap(), 
+            MoveRequestSAN {piece: PieceType::Knight, end_pos: Position::try_from("c3").ok(), start_file: Some(1), start_rank: Some(0), castle: None, promotion: None} 
+        );
+        assert_eq!(
+            MoveRequestSAN::try_from("e8=Q").unwrap(), 
+            MoveRequestSAN {piece: PieceType::Pawn, end_pos: Position::try_from("e8").ok(), start_file: None, start_rank: None, castle: None, promotion: Some(PieceType::Queen)} 
+        );
+    }
+
+    #[test]
+    fn test_position_try_from_str() {
+        let good1 = "c3".to_string();
+        assert_eq!(Position::try_from(&good1[..]), Ok(Position(2, 2)));
+        let good2 = "h8".to_string();
+        assert_eq!(Position::try_from(&good2[..]), Ok(Position(7, 7)));
+        let bad1 = "a9".to_string();
+        assert!(Position::try_from(&bad1[..]).is_err());
+        let bad2 = "k1".to_string();
+        assert!(Position::try_from(&bad2[..]).is_err());
+        let bad3 = "asfd".to_string();
+        assert!(Position::try_from(&bad3[..]).is_err());
+    }
+
+    #[test]
+    fn test_position_try_from_usize_pair() {
+        assert_eq!(Position::try_from((2, 2)), Ok(Position(2, 2)));
+        assert_eq!(Position::try_from((7, 7)), Ok(Position(7, 7)));
+        assert!(Position::try_from((1, 9)).is_err());
+    }
+
+    #[test]
+    fn test_position_add() {
+        let position = Position::try_from("g8").unwrap();
+        assert_eq!(position.add(PosDiff(-3, -2)).unwrap(), Position::try_from("d6").unwrap());
+        assert!(position.add(PosDiff(2, 1)).is_err());
+    }
+
+    #[test]
+    fn test_position_diff() {
+        let pos1 = Position::try_from("g8").unwrap();
+        let pos2 = Position::try_from("a2").unwrap();
+        let pos3 = Position::try_from("c1").unwrap();
+        assert_eq!(Position::diff(pos1, pos2), PosDiff(6, 6));
+        assert_eq!(Position::diff(pos2, pos1), PosDiff(-6, -6));
+        assert_eq!(Position::diff(pos3, pos2), PosDiff(2, -1));
+    }
+
+    #[test]
+    fn test_position_as_white() {
+        let pos1 = Position::try_from("g8").unwrap();
+        assert_eq!(pos1.as_white(Colour::Black), Position::try_from("b1").unwrap());
+        assert_eq!(pos1.as_white(Colour::White), pos1);
+    }
+
+    #[test]
+    fn test_posdiff_as_white() {
+        let diff = PosDiff(3, -2);
+        assert_eq!(diff.as_white(Colour::Black), PosDiff(-3, 2));
+        assert_eq!(diff.as_white(Colour::White), diff);
+    }
 }

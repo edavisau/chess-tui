@@ -59,20 +59,13 @@ impl Game {
         }
 
         let mut found_move: Move = match self.get_piece(pos1).as_ref() {
-            Some(piece) => {
-                if piece.colour == self.current_turn {
-                    self.find_move(pos1, pos2)?
-                } else {
-                    return Err(MoveError::InvalidColour)
-                }
-            },
+            Some(piece) if piece.colour == self.current_turn => self.find_move(pos1, pos2)?,
+            Some(_) => return Err(MoveError::InvalidColour),
             None => return Err(MoveError::NoPiece),
         };
 
         // Specify promotion piece
-        if let MoveType::PawnPush(ref mut promotion_piece) = found_move.kind {
-            *promotion_piece = Some(promotion_callback());
-        } else if let MoveType::PawnAttack(_, ref mut promotion_piece) = found_move.kind {
+        if let MoveType::PawnPush(ref mut promotion_piece) | MoveType::PawnAttack(_, ref mut promotion_piece) = found_move.kind {
             *promotion_piece = Some(promotion_callback());
         }
 
@@ -83,16 +76,20 @@ impl Game {
     pub fn from_san_moves(input: Vec<&str>) -> Option<Self> {
         let mut game = Game::new();
         for x in input {
-            if game.attempt_san_move(x).is_err() {
+            if game.try_move_san(x).is_err() {
                 return None;
             }
         }
         return Some(game);
     }
 
-    pub fn attempt_san_move(&mut self, value: &str) -> Result<MoveResult, MoveError> {
-        let move_request = MoveRequestSAN::try_from(value).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
-        let mut found_move = self.try_san_request(&move_request).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
+    pub fn try_move_san(&mut self, value: &str) -> Result<MoveResult, MoveError> {
+        let move_request = match MoveRequestSAN::try_from(value) {
+            Ok(move_request) => move_request,
+            Err(message) => return Err(MoveError::InvalidMoveRequest(message.to_owned()))
+        };
+
+        let mut found_move = self.check_san_request(&move_request).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
         
         // Specify promotion piece
         if let MoveType::PawnAttack(_, Some(piece_type)) | MoveType::PawnPush(Some(piece_type)) = &mut found_move.kind {
@@ -550,7 +547,7 @@ impl Game {
         return true;
     }
 
-    fn try_san_request(&mut self, move_request: &MoveRequestSAN) -> Result<Move, &'static str> {
+    fn check_san_request(&mut self, move_request: &MoveRequestSAN) -> Result<Move, &'static str> {
         // Most moves can be found by looking at the position and using Game::found_move.
         // However castling and promotions can be handled differently
 
@@ -565,7 +562,9 @@ impl Game {
         }
 
         // Promotions
-        if move_request.piece == PieceType::Pawn && move_request.end_pos.unwrap().1 == 7 {
+        if move_request.piece == PieceType::Pawn && move_request.end_pos
+                .unwrap()
+                .as_white(self.get_current_colour()).1 == 7 {
             if move_request.promotion.is_none() {
                 return Err("Must provide promotion piece when doing promotions")
             }
@@ -586,7 +585,7 @@ impl Game {
             .collect();
 
         return match potential_moves.len() {
-            0 => Err("No move is possible."),
+            0 => Err("No such move is possible."),
             1 => Ok(potential_moves.remove(0)),
             _ => Err("This move has multiple possibilities. Please make it more specific."),
         }
@@ -624,54 +623,6 @@ impl Display for Game {
         .join("\n");
         write!(f, "{}", result)
     }
-}
-
-#[test]
-fn test_find_move() {
-    let game = Game::new();
-
-    // Pawn E2 -> E4
-    assert_eq!(
-        game.find_move("e2".try_into().unwrap(), "e4".try_into().unwrap()).unwrap(),
-        Move::new("e2".try_into().unwrap(), MoveType::PawnStart)
-    );
-
-    // Queen D1 -> B3
-    assert_eq!(
-        game.find_move("d1".try_into().unwrap(), "b3".try_into().unwrap()).err().unwrap(),
-        MoveError::PositionBlocked
-    );
-
-    // Bishop F8 -> A3
-    assert_eq!(
-        game.find_move("f8".try_into().unwrap(), "a3".try_into().unwrap()).err().unwrap(),
-        MoveError::PositionBlocked
-    );
-
-    // Bishop F8 -> A4
-    assert_eq!(
-        game.find_move("f8".try_into().unwrap(), "a4".try_into().unwrap()).err().unwrap(),
-        MoveError::InvalidMovement
-    );
-
-    // Queen D1 -> E1
-    assert_eq!(
-        game.find_move("d1".try_into().unwrap(), "e1".try_into().unwrap()).err().unwrap(),
-        MoveError::AttackingSameColour
-    );
-
-}
-
-#[test]
-fn test_san_moves() {
-    let mut game = Game::from_san_moves(vec!["Nc3", "e5", "Nf3", "a6", "Nb5", "a5"]).unwrap();
-    assert!(game.attempt_san_move("Nd4").is_err());
-    assert!(game.attempt_san_move("Nbd4").is_ok());
-
-    // promotions
-    let mut game = Game::from_san_moves(vec!["c4", "b5", "cxb5", "c5", "c6", "Bb7", "cxb7", "a6"]).unwrap();
-    assert!(game.attempt_san_move("bxa8").is_err());
-    assert!(game.attempt_san_move("bxa8=Q").is_ok());
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -720,4 +671,84 @@ pub enum PieceType {
     Bishop,
     Queen,
     King,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_move() {
+        let game = Game::new();
+    
+        // Pawn E2 -> E4
+        assert_eq!(
+            game.find_move("e2".try_into().unwrap(), "e4".try_into().unwrap()).unwrap(),
+            Move::new("e2".try_into().unwrap(), MoveType::PawnStart)
+        );
+        // Pawn E2 -> E3
+        assert_eq!(
+            game.find_move("e2".try_into().unwrap(), "e3".try_into().unwrap()).unwrap(),
+            Move::new("e2".try_into().unwrap(), MoveType::PawnPush(None))
+        );
+        // Knight B1 -> C3
+        assert_eq!(
+            game.find_move("b1".try_into().unwrap(), "c3".try_into().unwrap()).unwrap(),
+            Move::new("b1".try_into().unwrap(), MoveType::Standard("c3".try_into().unwrap()))
+        );
+        // Queen D1 -> B3
+        assert_eq!(
+            game.find_move("d1".try_into().unwrap(), "b3".try_into().unwrap()).err().unwrap(),
+            MoveError::PositionBlocked
+        );
+        // Bishop F8 -> A4
+        assert_eq!(
+            game.find_move("f8".try_into().unwrap(), "a4".try_into().unwrap()).err().unwrap(),
+            MoveError::InvalidMovement
+        );
+        // Queen D1 -> E1
+        assert_eq!(
+            game.find_move("d1".try_into().unwrap(), "e1".try_into().unwrap()).err().unwrap(),
+            MoveError::AttackingSameColour
+        );
+
+        let game = Game::from_san_moves(vec!["e4", "h5", "Nf3", "h4", "Ba6", "h3", "e5", "d5"]).unwrap();
+        // Short Castle: E1 -> G1
+        assert_eq!(
+            game.find_move("e1".try_into().unwrap(), "g1".try_into().unwrap()).unwrap(),
+            Move::new("e1".try_into().unwrap(), MoveType::Castle(CastleType::Short))
+        );
+        // En Passant: E5 -> D6
+        assert_eq!(
+            game.find_move("e5".try_into().unwrap(), "d6".try_into().unwrap()).unwrap(),
+            Move::new("e5".try_into().unwrap(), MoveType::EnPassant(Direction::Left))
+        );
+    }
+    
+    #[test]
+    fn test_try_move_san() {
+        let mut game = Game::from_san_moves(vec!["Nc3", "e5", "Nf3", "a6", "Nb5", "a5"]).unwrap();
+        // Normal moves
+        assert!(game.try_move_san("Nd4").is_err());
+        assert!(game.try_move_san("Nbd4").is_ok());
+    
+        // Promotions
+        let mut game = Game::from_san_moves(vec!["c4", "b5", "cxb5", "c5", "c6", "Bb7", "cxb7", "a6"]).unwrap();
+        assert!(game.try_move_san("bxa8").is_err());
+        assert!(game.try_move_san("bxa8=Q").is_ok());
+    }
+
+    #[test]
+    fn test_is_attacked() {
+        let game = Game::from_san_moves(vec!["e4", "d5"]).unwrap();
+        assert!(game.is_attacked(Colour::Black, "d5".try_into().unwrap()));
+        assert!(!game.is_attacked(Colour::White, "c7".try_into().unwrap()));
+    }
+
+    #[test]
+    fn test_is_in_check() {
+        let game = Game::from_san_moves(vec!["e4", "e5", "Qh5", "h6", "Qe5"]).unwrap();
+        assert!(game.is_in_check(Colour::Black));
+        assert!(!game.is_in_check(Colour::White));
+    }
 }
