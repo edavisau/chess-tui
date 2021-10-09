@@ -325,8 +325,7 @@ impl Game {
 
         return potential_moves.iter()
             .map(|x| self.check_move(x, true))
-            .filter_map(|x| x.ok())
-            .next()
+            .find_map(|x| x.ok())
             .is_some();
     }
 
@@ -467,9 +466,9 @@ impl Game {
                             return Ok(Move::new(pos1, MoveType::PawnPush(None)));
                         }
                     }, 
-                    PosDiff(1|-1, 1) => {  // Attack or En Passant
+                    PosDiff(direction @ (1|-1), 1) => {  // Attack or En Passant
+                        let direction = if direction < 0 { Direction::Left } else { Direction::Right };
                         if let &Some(_) = self.get_piece(pos2) { // Standard attack
-                            let direction = if diff_as_white.0 == -1 { Direction::Left } else { Direction::Right };
                             if promotion {
                                 return Ok(Move::new(pos1, MoveType::PawnAttack(direction, Some(PieceType::Queen))));
                             } else {
@@ -477,7 +476,6 @@ impl Game {
                             }
                         } else { // En Passant
                             let last_move = self.moves.last().ok_or(MoveError::InvalidEnPassantConditions)?;
-                            let direction = if diff_as_white.0 == -1 { Direction::Left } else { Direction::Right };
                             if let Move { pos: last_pos, kind: MoveType::PawnStart } = last_move {
                                 if *last_pos == pos1.add(PosDiff(diff.0, diff.1 * 2)).unwrap() {
                                     return Ok(Move::new(pos1, MoveType::EnPassant(direction)))
@@ -510,12 +508,8 @@ impl Game {
             PieceType::King => {
                 match diff {
                     PosDiff(0|-1|1, 0|-1|1) => return Ok(Move::new(pos1, MoveType::Standard(pos2))),
-                    PosDiff(-2|2, 0) => { // Castle
-                        let castle_type = match diff.0 {
-                            -2 => CastleType::Long,
-                            2 => CastleType::Short,
-                            _ => unreachable!(),
-                        };
+                    PosDiff(direction @ (-2|2), 0) => { // Castle
+                        let castle_type = if direction < 0 { CastleType::Long} else { CastleType::Short };
                         if self.can_castle(castle_type, piece.colour) {
                             return Ok(Move::new(pos1, MoveType::Castle(castle_type)));
                         } else {
