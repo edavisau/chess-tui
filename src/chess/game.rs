@@ -622,11 +622,11 @@ impl Game {
 
 impl Display for Game {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let result = self.board.iter().rev().map(|row| {
+        let piece_chars: Vec<Vec<String>> = self.board.iter().rev().map(|row| {
             row.iter()
             .map(|x| {
                 if let Some(Piece{ kind: p, colour: c, ..}) = x {
-                    let char = match (p, c) {
+                    match (p, c) {
                         (PieceType::Pawn, Colour::White) => '\u{2659}',
                         (PieceType::Pawn, Colour::Black) => '\u{265F}',
                         (PieceType::Rook, Colour::White) => '\u{2656}',
@@ -639,16 +639,28 @@ impl Display for Game {
                         (PieceType::Queen, Colour::Black) => '\u{265B}',
                         (PieceType::King, Colour::White) => '\u{2654}',
                         (PieceType::King, Colour::Black) => '\u{265A}',
-                    };
-                    format!("{}", char)
+                    }
                 } else {
-                    " ".to_string()
+                    ' '
                 }
             })
+            .map(|x| x.to_string())
             .collect::<Vec<String>>()
-            .join(" ")
-        }).collect::<Vec<String>>()
-        .join("\n");
+        }).collect::<Vec<Vec<String>>>();
+        
+        let mut result: Vec<String> = Vec::new();
+        // Top row
+        result.push(" a b c d e f g h  ".to_owned());
+        // Middle rows
+        for (i, row) in piece_chars.iter().enumerate() {
+            let row_num: isize = 8 - (i as isize);
+            result.push(format!("{}{} {}", row_num, row.join(" "), row_num));
+        }
+        // Bottom row
+        result.push(" a b c d e f g h  ".to_owned());
+
+        let result = result.join("\n");
+
         write!(f, "{}", result)
     }
 }
