@@ -4,6 +4,7 @@ use std::fs;
 
 use super::BOARD_SIZE;
 use super::moves::*;
+use super::components::*;
 
 use serde::{Serialize, Deserialize};
 use itertools::Itertools;
@@ -672,71 +673,6 @@ impl Display for Game {
         let result = self.display_board_as_colour(Colour::White);
         write!(f, "{}", result)
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Piece {
-    kind: PieceType,
-    colour: Colour,
-    position: Position,
-    history: Vec<u8>,
-}
-
-impl Piece {
-    fn new(kind: PieceType, colour: Colour, position: Position) -> Self {
-        Self { kind, colour, position, history: Vec::new() }
-    }
-
-    fn as_char(&self) -> char {
-        match (self.kind, self.colour) {
-            (PieceType::Pawn, Colour::White) => '\u{2659}',
-            (PieceType::Pawn, Colour::Black) => '\u{265F}',
-            (PieceType::Rook, Colour::White) => '\u{2656}',
-            (PieceType::Rook, Colour::Black) => '\u{265C}',
-            (PieceType::Knight, Colour::White) => '\u{2658}',
-            (PieceType::Knight, Colour::Black) => '\u{265E}',
-            (PieceType::Bishop, Colour::White) => '\u{2657}',
-            (PieceType::Bishop, Colour::Black) => '\u{265D}',
-            (PieceType::Queen, Colour::White) => '\u{2655}',
-            (PieceType::Queen, Colour::Black) => '\u{265B}',
-            (PieceType::King, Colour::White) => '\u{2654}',
-            (PieceType::King, Colour::Black) => '\u{265A}',
-        }
-    }
-}
-
-#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum Colour {
-    White,
-    Black
-}
-
-impl Display for Colour {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Colour::White => write!(f, "White"),
-            Colour::Black => write!(f, "Black"),
-        }
-    }
-}
-
-impl Colour {
-    pub fn flip(&self) -> Self {
-        match self {
-            Colour::White => Colour::Black,
-            Colour::Black => Colour::White,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum PieceType {
-    Pawn,
-    Rook,
-    Knight,
-    Bishop,
-    Queen,
-    King,
 }
 
 #[cfg(test)]

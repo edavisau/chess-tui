@@ -4,7 +4,7 @@ use clap::load_yaml;
 use crossterm::event::{self, KeyModifiers, KeyCode};
 
 mod chess;
-use chess::game::PieceType;
+use chess::components::PieceType;
 use chess::moves::{MoveResult, MoveError};
 
 mod ui;

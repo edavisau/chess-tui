@@ -2,7 +2,8 @@ use std::io::Stdout;
 
 use tui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
-use crate::chess::game::{Colour, Game};
+use crate::chess::game::Game;
+use crate::chess::components::Colour;
 use crate::ui::Layout;
 
 const INPUT_MAX_CHARS: usize = 20;
