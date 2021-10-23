@@ -1,35 +1,28 @@
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead};
 
-use clap::{App, load_yaml};
+use clap::load_yaml;
+use crossterm::event::{self, KeyModifiers, KeyCode};
 
 mod chess;
-use chess::game::{Game, PieceType};
+use chess::game::PieceType;
 use chess::moves::{MoveResult, MoveError};
 
-enum Action {
+mod ui;
+mod app;
+use app::{App, AppState, GameResult};
+
+enum UserAction {
     TryPlayPositions(String, String),
     TryPlaySAN(String),
     SaveGame(String),
     QuitGame,
-    PrintHelp,
     Resign,
     OfferDraw,
     CancelDraw,
 }
 
-fn print_help() {
-    println!("How to use: enter a move using the notation below or a command starting with '/'\n\
-    Move Notation:\n\
-    \tAbsolute positions: 'e2 e4', 'b8 c6', 'a5 b6'\n\
-    \tStandard notation: 'Nc3', 'd5', 'fxg6', 'Q3xf4#'\n\
-    \n\
-    Commands:\n\
-    \t/h: print help\n\
-    \t/s <file>: save game to file\n\
-    \t/q: quit game\n");
-}
-
 fn choose_promotion() -> PieceType {
+    todo!("Choose promotion through the UI");
     println!("Choose a piece to promote to: 1.Queen, 2.Rook, 3.Knight, 4.Bishop");
     let stdin = io::stdin();
     let selection = stdin.lock().lines().next().expect("There was no line.").expect("The line could not be read.")
@@ -47,13 +40,8 @@ fn choose_promotion() -> PieceType {
     }
 }
 
-fn request_action() -> Result<Action, &'static str> {
-    let stdin = io::stdin();
-    let mut player_input = stdin.lock()
-        .lines()
-        .next()
-        .expect("There was no line.")
-        .expect("The line could not be read.")
+fn parse_player_input(player_input: &String) -> Result<UserAction, &'static str> {
+    let mut player_input = player_input
         .trim()
         .split_whitespace()
         .map(|x| x.to_string())
@@ -65,119 +53,142 @@ fn request_action() -> Result<Action, &'static str> {
 
     if player_input[0].starts_with("/") {
         match &player_input[0][1..] {
-            "q" => return Ok(Action::QuitGame),
+            "q" => return Ok(UserAction::QuitGame),
             "s" => {
                 if player_input.len() >= 2 {
-                    return Ok(Action::SaveGame(player_input[1].to_string()))
+                    return Ok(UserAction::SaveGame(player_input[1].to_string()))
                 } else {
                     return Err("Must enter a filename to save game.");
                 }
             },
-            "h" => return Ok(Action::PrintHelp),
-            "r" => return Ok(Action::Resign),
-            "od" => return Ok(Action::OfferDraw),
-            "cd" => return Ok(Action::CancelDraw),
+            "r" => return Ok(UserAction::Resign),
+            "od" => return Ok(UserAction::OfferDraw),
+            "cd" => return Ok(UserAction::CancelDraw),
             _ => return Err("Invalid command. Commands are 's' or 'q'")
         }
     }
 
     return match player_input.len() {
         0 => unreachable!(),
-        1 => Ok(Action::TryPlaySAN(player_input.remove(0))),
+        1 => Ok(UserAction::TryPlaySAN(player_input.remove(0))),
         2 => {
-            let b = player_input.remove(1); // unpacking backwards because Vec is array-based. There must be a nicer way.
-            let a = player_input.remove(0);
-            Ok(Action::TryPlayPositions(a, b))
+            let mut player_input = player_input.into_iter();
+            let (a, b) = (player_input.next().unwrap(), player_input.next().unwrap());
+            Ok(UserAction::TryPlayPositions(a, b))
         },
         _ => Err("Too many tokens.")
     }
 }
 
-fn play_game(mut game: Game) {
-    print_help();
-    loop {
-        println!("{}", game);
-        println!("{}. {}'s Turn", game.get_current_count() + 1, game.get_current_colour());
-        loop {
-            print!("Move: ");
-            io::stdout().flush().expect("Could not flush!");
-            
-            let action = match request_action() {
-                Ok(action) => action,
-                Err(e) => {
-                    println!("Invalid input: {}", e);
-                    continue;
-                }
-            };
+fn handle_player_input(app: &mut App, player_input: &String) -> Option<Result<String, String>> {
+    let action = match parse_player_input(player_input) {
+        Ok(action) => action,
+        Err(e) => {
+            return Some(Err(format!("Invalid input: {}", e)))
+        }
+    };
 
-            let move_attempted: Option<Result<MoveResult, MoveError>>;
-            match action {
-                Action::TryPlayPositions(p1, p2) => { move_attempted = Some(game.try_move_positions(p1, p2, choose_promotion)) },
-                Action::TryPlaySAN(value) => { move_attempted = Some(game.try_move_san(&value[..])) },
-                Action::SaveGame(filename) => {
-                    game.save_game(&filename);
-                    continue;
-                },
-                Action::QuitGame => return,
-                Action::PrintHelp => {
-                    print_help(); 
-                    continue;
-                },
-                Action::Resign => {
-                    println!("You have resigned. {} wins!", game.get_current_colour().flip());
-                    return
-                },
-                Action::OfferDraw => {
-                    let game_ended = game.offer_draw();
-                    if game_ended {
-                        println!("Both sides have agreed to a draw.");
-                        return;
-                    } else {
-                        continue;
+    let move_attempted: Option<Result<MoveResult, MoveError>>;
+    match action {
+        UserAction::TryPlayPositions(p1, p2) => { move_attempted = Some(app.game.try_move_positions(p1, p2, choose_promotion)) },
+        UserAction::TryPlaySAN(value) => { move_attempted = Some(app.game.try_move_san(&value[..])) },
+        UserAction::SaveGame(filename) => {
+            app.game.save_game(&filename);
+            return Some(Ok("Saved game".into()))
+        },
+        UserAction::QuitGame => {
+            app.state = AppState::Finished(GameResult::Interrupted);
+            return Some(Ok("Saved game".into()))
+        },
+        UserAction::Resign => {
+            let winner = app.game.get_current_colour().flip();
+            app.state = AppState::Finished(GameResult::Resignation(winner));
+            return Some(Ok(format!("{} has resigned. {} wins!", app.game.get_current_colour(), winner)));
+            
+        },
+        UserAction::OfferDraw => {
+            let game_ended = app.game.offer_draw();
+            if game_ended {
+                app.state = AppState::Finished(GameResult::Draw);
+                return Some(Ok("Both sides have agreed to a draw.".into()));
+            } else {
+                return None;
+            }
+        },
+        UserAction::CancelDraw => {
+            app.game.cancel_draw();
+            return None;
+        }
+    }
+    
+    if let Some(result) = move_attempted {
+        match result {
+            Ok(MoveResult::MovePlayed) => (),
+            Ok(MoveResult::Check(colour)) => return Some(Ok(format!("{} is in check.", colour))),
+            Ok(MoveResult::Checkmate(colour)) => {
+                app.state = AppState::Finished(GameResult::Checkmate(colour.flip()));
+                return Some(Ok(format!("Game over. {} has been checkmated! {} is the winner!", colour, colour.flip())));
+            },
+            Ok(MoveResult::Stalemate(colour)) => {
+                app.state = AppState::Finished(GameResult::Stalemate);
+                return Some(Ok(format!("Game over, {} has caused a stalemate. This is a draw.", colour)));
+            },
+            Err(e) => {
+                return Some(Err(format!("Invalid move: {:?}", e)))
+            },
+        }
+    }
+    None
+}
+
+impl App {
+    fn play(&mut self) {
+        self.state = AppState::Running;
+        loop {
+            ui::update_ui(self).unwrap();
+
+            let event = event::read().expect("Encountered crossterm error.");
+
+            // If help screen is currently being showed, ignore event and redraw main layout.
+            if self.show_help_screen {
+                self.show_help_screen = false;
+                continue;
+            } else if let AppState::Finished(_) = self.state {
+                return;
+            }
+
+            match event {
+                event::Event::Key(event) => {
+                    match (event.code, event.modifiers) {
+                        (KeyCode::Char('?'), _) => self.show_help_screen = true,
+                        (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                            self.add_input_char(c);
+                        },
+                        (KeyCode::Backspace, _) => {
+                            self.pop_input_char();
+                        },
+                        (KeyCode::Enter, _) => {
+                            let player_input = std::mem::replace(&mut self.input, String::new()); 
+                            self.status = handle_player_input(self, &player_input);
+                        },
+                        _ => ()
                     }
                 },
-                Action::CancelDraw => {
-                    game.cancel_draw();
-                    continue;
-                }
+                _ => ()
             }
-
-            if let Some(result) = move_attempted {
-                match result {
-                    Ok(MoveResult::MovePlayed) => (),
-                    Ok(MoveResult::Check(colour)) => println!("{} is in check.", colour),
-                    Ok(MoveResult::Checkmate(colour)) => {
-                        println!("{}", game);
-                        println!("Game over, {} has been checkmated! {} is the winner!", colour, colour.flip());
-                        return;
-                    },
-                    Ok(MoveResult::Stalemate(colour)) => {
-                        println!("{}", game);
-                        println!("Game over, {} has caused a stalemate. This is a draw.", colour);
-                        return;
-                    },
-                    Err(e) => {
-                        println!("Invalid move: {:?}", e);
-                        continue;
-                    },
-                }
-            }
-            
-            println!(""); // Blank line
-            break;
         }
     }
 }
 
 fn main() {
     let yaml = load_yaml!("cli.yml");
-    let matches = App::from_yaml(yaml).get_matches();
+    let matches = clap::App::from_yaml(yaml).get_matches();
 
     if matches.is_present("play") {
-        play_game(Game::new());
+        App::default().play()
     } else if let Some(matches) = matches.subcommand_matches("load") {
         let file = matches.value_of("file").unwrap();
-        play_game(Game::load_game(file));
+        App::from_file(file).play()
     } else {
         unreachable!();
     }

@@ -6,10 +6,11 @@ use super::BOARD_SIZE;
 use super::moves::*;
 
 use serde::{Serialize, Deserialize};
+use itertools::Itertools;
 
 /// Chess game representing the main interface for the game.
 #[derive(Serialize, Deserialize)]
-pub(crate) struct Game {
+pub struct Game {
     /// 8x8 board containing a piece or an empty square.
     board: Vec<Vec<Option<Piece>>>,
     /// The colour whose turn it is to move
@@ -110,6 +111,7 @@ impl Game {
         return self.try_move(found_move);
     }
 
+    #[allow(dead_code)]
     pub fn get_current_count(&self) -> u8 {
         self.count
     }
@@ -182,6 +184,51 @@ impl Game {
         if let Some(piece) = self.get_piece_mut(pos2).as_mut() {
             piece.position = pos2;
         }
+    }
+
+    /// Displays the board from the perspective of a colour
+    pub fn display_board_as_colour(&self, colour: Colour) -> String {
+        let rows: Vec<(usize, String)> = if colour == Colour::White {
+            self.get_board_rows()
+                .rev()
+                .enumerate()
+                .map(|(i, x)| (8 - (i as usize), x))
+                .collect::<Vec<(usize, String)>>()
+        } else {
+            self.get_board_rows()
+                .enumerate()
+                .map(|(i, x)| (i as usize + 1, x))
+                .collect::<Vec<(usize, String)>>()
+        };
+        
+
+        let mut result: Vec<String> = Vec::new();
+        // Top row
+        result.push("  a b c d e f g h".to_owned());
+        // Middle rows
+        for (row_num, row) in rows {
+            result.push(format!("{} {}  {}", row_num, row, row_num));
+        }
+        // Bottom row
+        result.push("  a b c d e f g h".to_owned());
+
+        return result.join("\n");
+    }
+
+    /// Returns a list of all previous moves in standard notation
+    pub fn display_moves(&self) -> Vec<String> {
+        self.moves.iter()
+            .map(|Move{pos, ..}| format!("{}{}todo", pos.0, pos.1))
+            .collect::<Vec<String>>()
+    }
+
+    fn get_board_rows(&self) -> impl Iterator<Item = String> + '_ + DoubleEndedIterator{
+        self.board.iter()
+            .map(|row| {
+                row.iter()
+                    .map(|tile| if let Some(piece) = tile { piece.as_char() } else { ' ' })
+                    .join(" ")
+            })
     }
 
     fn do_move(&mut self, move_: &Move) {
@@ -622,45 +669,7 @@ impl Game {
 
 impl Display for Game {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let piece_chars: Vec<Vec<String>> = self.board.iter().rev().map(|row| {
-            row.iter()
-            .map(|x| {
-                if let Some(Piece{ kind: p, colour: c, ..}) = x {
-                    match (p, c) {
-                        (PieceType::Pawn, Colour::White) => '\u{2659}',
-                        (PieceType::Pawn, Colour::Black) => '\u{265F}',
-                        (PieceType::Rook, Colour::White) => '\u{2656}',
-                        (PieceType::Rook, Colour::Black) => '\u{265C}',
-                        (PieceType::Knight, Colour::White) => '\u{2658}',
-                        (PieceType::Knight, Colour::Black) => '\u{265E}',
-                        (PieceType::Bishop, Colour::White) => '\u{2657}',
-                        (PieceType::Bishop, Colour::Black) => '\u{265D}',
-                        (PieceType::Queen, Colour::White) => '\u{2655}',
-                        (PieceType::Queen, Colour::Black) => '\u{265B}',
-                        (PieceType::King, Colour::White) => '\u{2654}',
-                        (PieceType::King, Colour::Black) => '\u{265A}',
-                    }
-                } else {
-                    ' '
-                }
-            })
-            .map(|x| x.to_string())
-            .collect::<Vec<String>>()
-        }).collect::<Vec<Vec<String>>>();
-        
-        let mut result: Vec<String> = Vec::new();
-        // Top row
-        result.push(" a b c d e f g h  ".to_owned());
-        // Middle rows
-        for (i, row) in piece_chars.iter().enumerate() {
-            let row_num: isize = 8 - (i as isize);
-            result.push(format!("{}{} {}", row_num, row.join(" "), row_num));
-        }
-        // Bottom row
-        result.push(" a b c d e f g h  ".to_owned());
-
-        let result = result.join("\n");
-
+        let result = self.display_board_as_colour(Colour::White);
         write!(f, "{}", result)
     }
 }
@@ -677,10 +686,27 @@ impl Piece {
     fn new(kind: PieceType, colour: Colour, position: Position) -> Self {
         Self { kind, colour, position, history: Vec::new() }
     }
+
+    fn as_char(&self) -> char {
+        match (self.kind, self.colour) {
+            (PieceType::Pawn, Colour::White) => '\u{2659}',
+            (PieceType::Pawn, Colour::Black) => '\u{265F}',
+            (PieceType::Rook, Colour::White) => '\u{2656}',
+            (PieceType::Rook, Colour::Black) => '\u{265C}',
+            (PieceType::Knight, Colour::White) => '\u{2658}',
+            (PieceType::Knight, Colour::Black) => '\u{265E}',
+            (PieceType::Bishop, Colour::White) => '\u{2657}',
+            (PieceType::Bishop, Colour::Black) => '\u{265D}',
+            (PieceType::Queen, Colour::White) => '\u{2655}',
+            (PieceType::Queen, Colour::Black) => '\u{265B}',
+            (PieceType::King, Colour::White) => '\u{2654}',
+            (PieceType::King, Colour::Black) => '\u{265A}',
+        }
+    }
 }
 
 #[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) enum Colour {
+pub enum Colour {
     White,
     Black
 }

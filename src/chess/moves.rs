@@ -31,7 +31,7 @@ impl Move {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum MoveError {
+pub enum MoveError {
     InvalidMovement, // Rook tries to move in a diagonal
     NoPiece, // there is no piece at position
     InvalidColour, // using white on black's turn, for example
@@ -44,7 +44,7 @@ pub(crate) enum MoveError {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum MoveResult {
+pub enum MoveResult {
     MovePlayed,
     Check(Colour),
     Checkmate(Colour),
