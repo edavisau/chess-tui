@@ -159,6 +159,14 @@ impl App {
                     (KeyCode::Enter, _) => {
                         let player_input = std::mem::replace(&mut self.input, String::new());
                         self.status = handle_player_input(self, &player_input);
+                        self.reset_history_scroll();
+                    }
+                    (KeyCode::Char(c @ ('j' | 'k')), KeyModifiers::ALT) => {
+                        match c {
+                            'j' => self.history_scroll = self.history_scroll.checked_add(1).unwrap_or(0),
+                            'k' => self.history_scroll = self.history_scroll.checked_sub(1).unwrap_or(0),
+                            _ => unreachable!(),
+                        }
                     }
                     _ => (),
                 },

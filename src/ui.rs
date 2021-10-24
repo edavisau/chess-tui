@@ -59,6 +59,7 @@ pub fn update_ui(app: &mut App) -> Result<(), io::Error> {
             app.terminal.clear()?;
             app.size = Some(size);
             app.layout = Some(Layout::new(size));
+            app.reset_history_scroll();
         }
     }
 
@@ -83,6 +84,7 @@ pub fn update_ui(app: &mut App) -> Result<(), io::Error> {
         app.terminal.draw(|f| draw_help_screen(f, size))?;
     } else {
         let layout = app.layout.unwrap();
+        app.check_history_scroll();
         app.terminal.draw(|f| {
             draw_board_block(
                 f,
@@ -90,7 +92,7 @@ pub fn update_ui(app: &mut App) -> Result<(), io::Error> {
                 app.game
                     .display_board_as_colour(app.game.get_current_colour()),
             );
-            draw_history_block(f, layout.history, app.game.display_moves());
+            draw_history_block(f, layout.history, app.game.display_moves(), app.history_scroll);
             draw_status_block(f, layout.status, &app.status);
             draw_command_block(
                 f,
@@ -154,7 +156,7 @@ where
     f.render_widget(p, center_rect);
 }
 
-fn draw_history_block<B>(f: &mut Frame<B>, rect: Rect, mut moves: Vec<String>)
+fn draw_history_block<B>(f: &mut Frame<B>, rect: Rect, mut moves: Vec<String>, scroll: usize)
 where
     B: Backend,
 {
@@ -173,6 +175,10 @@ where
             moves[i * 2 + 1]
         )));
     }
+
+    // Show certain range of lines
+    let slice = scroll..scroll + rect.height as usize - 2;
+    lines = lines.drain(slice).collect();
 
     let p = Paragraph::new(lines)
         .block(block)
@@ -217,6 +223,8 @@ where
     const HELP_STR: &'static str = "press any key to exit\n\
     \n\
     How to use: enter a move using the notation below or a command starting with '/'\n\
+    Scroll through the history of moves with Alt + j/k
+
     Move Notation:\n\
     \tAbsolute positions: 'e2 e4', 'b8 c6', 'a5 b6'\n\
     \tStandard notation: 'Nc3', 'd5', 'fxg6', 'Q3xf4#'\n\

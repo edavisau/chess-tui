@@ -17,6 +17,7 @@ pub struct App {
     pub layout: Option<Layout>,
     pub status: Option<Result<String, String>>,
     pub show_help_screen: bool,
+    pub history_scroll: usize,
 }
 
 impl App {
@@ -32,6 +33,22 @@ impl App {
 
     pub fn pop_input_char(&mut self) {
         let _ = self.input.pop();
+    }
+
+    /// Ensures that history scroll isn't too large. Corrects it if it is.
+    pub fn check_history_scroll(&mut self) {
+        let num_lines: usize = (self.game.get_current_count() as f32 / 2_f32).ceil() as usize;
+        let layout_height: usize = self.layout.unwrap().history.height as usize - 2;
+        if self.history_scroll > num_lines.checked_sub(layout_height).unwrap_or(0) {
+            self.reset_history_scroll();
+        }
+    }
+
+    /// Resets history scroll so that the latest moves are shown.
+    pub fn reset_history_scroll(&mut self) {
+        let num_lines: usize = (self.game.get_current_count() as f32 / 2_f32).ceil() as usize;
+        let layout_height: usize = self.layout.unwrap().history.height as usize - 2;
+        self.history_scroll = num_lines.checked_sub(layout_height).unwrap_or(0);
     }
 }
 
@@ -52,6 +69,7 @@ impl Default for App {
             layout: None,
             status: None,
             show_help_screen: false,
+            history_scroll: 0,
         }
     }
 }
