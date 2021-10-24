@@ -560,7 +560,7 @@ where
         };
 
         let promotion: Option<Box<dyn Promotion>> =
-            if piece.kind == PieceType::Pawn && self.pos2.as_white(colour).0 == 7 {
+            if piece.kind == PieceType::Pawn && self.pos2.as_white(colour).1 == 7 {
                 if let Some(promotion) = self.promotion_callback {
                     Some(Box::new(promotion))
                 } else {

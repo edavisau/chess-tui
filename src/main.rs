@@ -1,5 +1,3 @@
-use std::io::{self, BufRead};
-
 use clap::load_yaml;
 use crossterm::event::{self, KeyCode, KeyModifiers};
 
@@ -19,30 +17,6 @@ enum UserAction {
     Resign,
     OfferDraw,
     CancelDraw,
-}
-
-fn choose_promotion() -> PieceType {
-    todo!("Choose promotion through the UI");
-    println!("Choose a piece to promote to: 1.Queen, 2.Rook, 3.Knight, 4.Bishop");
-    let stdin = io::stdin();
-    let selection = stdin
-        .lock()
-        .lines()
-        .next()
-        .expect("There was no line.")
-        .expect("The line could not be read.")
-        .trim()
-        .parse::<usize>();
-    match selection {
-        Ok(1) => PieceType::Queen,
-        Ok(2) => PieceType::Rook,
-        Ok(3) => PieceType::Knight,
-        Ok(4) => PieceType::Bishop,
-        _ => {
-            println!("Invalid choice but we will give you queen anyway.");
-            PieceType::Queen
-        }
-    }
 }
 
 fn parse_player_input(player_input: &String) -> Result<UserAction, &'static str> {
@@ -96,7 +70,7 @@ fn handle_player_input(app: &mut App, player_input: &String) -> Option<Result<St
         UserAction::TryPlayPositions(p1, p2) => {
             move_attempted = Some(
                 app.game
-                    .try_move_positions(&p1, &p2, Some(choose_promotion)),
+                    .try_move_positions(&p1, &p2, Some(PieceType::Queen)),
             )
         }
         UserAction::TryPlaySAN(value) => move_attempted = Some(app.game.try_move_san(&value[..])),
