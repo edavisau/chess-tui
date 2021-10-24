@@ -175,9 +175,10 @@ where
             moves[i * 2 + 1]
         )));
     }
-
+    
     // Show certain range of lines
-    let slice = scroll..scroll + rect.height as usize - 2;
+    let lines_to_show: usize = (rect.height as usize - 2).min(lines.len());
+    let slice = scroll..scroll + lines_to_show;
     lines = lines.drain(slice).collect();
 
     let p = Paragraph::new(lines)
