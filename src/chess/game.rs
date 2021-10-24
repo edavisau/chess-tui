@@ -2,9 +2,9 @@ use std::convert::{TryFrom, TryInto};
 use std::fmt::Display;
 use std::fs;
 
-use super::BOARD_SIZE;
-use super::moves::*;
 use super::components::*;
+use super::moves::*;
+use super::BOARD_SIZE;
 
 use itertools::Itertools;
 
@@ -23,7 +23,7 @@ pub struct Game {
     /// Indicates whether the colour to next move is in check
     in_check: bool,
     /// Indicates which colour has offered to draw. If both colours offer draw (i.e. the other colour accepts), then the game ends.
-    draw_offer: Option<Colour>
+    draw_offer: Option<Colour>,
 }
 
 impl Default for Game {
@@ -31,21 +31,61 @@ impl Default for Game {
         let mut board: Vec<Vec<Option<Piece>>> = Vec::new();
 
         fn piece_order() -> Vec<PieceType> {
-            vec![PieceType::Rook, PieceType::Knight, PieceType::Bishop, PieceType::Queen, 
-                    PieceType::King, PieceType::Bishop, PieceType::Knight, PieceType::Rook]
+            vec![
+                PieceType::Rook,
+                PieceType::Knight,
+                PieceType::Bishop,
+                PieceType::Queen,
+                PieceType::King,
+                PieceType::Bishop,
+                PieceType::Knight,
+                PieceType::Rook,
+            ]
         }
 
-        board.push(piece_order().into_iter().enumerate().map(|(i, x)| Some(Piece::new(x, Colour::White, (i, 0).try_into().unwrap()))).collect());
-        board.push((0..BOARD_SIZE).map(|i| Some(Piece::new(PieceType::Pawn, Colour::White, (i, 1).try_into().unwrap()))).collect());
+        board.push(
+            piece_order()
+                .into_iter()
+                .enumerate()
+                .map(|(i, x)| Some(Piece::new(x, Colour::White, (i, 0).try_into().unwrap())))
+                .collect(),
+        );
+        board.push(
+            (0..BOARD_SIZE)
+                .map(|i| {
+                    Some(Piece::new(
+                        PieceType::Pawn,
+                        Colour::White,
+                        (i, 1).try_into().unwrap(),
+                    ))
+                })
+                .collect(),
+        );
         for _ in 0..4 {
             board.push((0..BOARD_SIZE).map(|_| None).collect());
         }
-        board.push((0..BOARD_SIZE).map(|i| Some(Piece::new(PieceType::Pawn, Colour::Black, (i, 6).try_into().unwrap()))).collect());
-        board.push(piece_order().into_iter().enumerate().map(|(i, x)| Some(Piece::new(x, Colour::Black, (i, 7).try_into().unwrap()))).collect());
-        Self { 
+        board.push(
+            (0..BOARD_SIZE)
+                .map(|i| {
+                    Some(Piece::new(
+                        PieceType::Pawn,
+                        Colour::Black,
+                        (i, 6).try_into().unwrap(),
+                    ))
+                })
+                .collect(),
+        );
+        board.push(
+            piece_order()
+                .into_iter()
+                .enumerate()
+                .map(|(i, x)| Some(Piece::new(x, Colour::Black, (i, 7).try_into().unwrap())))
+                .collect(),
+        );
+        Self {
             board,
-            current_turn: Colour::White, 
-            count: 0, 
+            current_turn: Colour::White,
+            count: 0,
             moves: Vec::new(),
             captured: Vec::new(),
             in_check: false,
@@ -78,24 +118,34 @@ impl Game {
         };
         move_.move_result = Some(result);
         self.moves.push(move_);
-        return Ok(result)
+        return Ok(result);
     }
 
-    pub fn try_move_positions<F>(&mut self, pos1: &str, pos2: &str, promotion_callback: Option<F>) -> Result<MoveResult, MoveError>
+    pub fn try_move_positions<F>(
+        &mut self,
+        pos1: &str,
+        pos2: &str,
+        promotion_callback: Option<F>,
+    ) -> Result<MoveResult, MoveError>
     where
-        F: Promotion + 'static
+        F: Promotion + 'static,
     {
-        let pos1: Position = pos1.try_into().map_err(|_| MoveError::InvalidMoveRequest(format!("Invalid position: {}", pos1)))?;
-        let pos2: Position = pos2.try_into().map_err(|_| MoveError::InvalidMoveRequest(format!("Invalid position: {}", pos2)))?;
+        let pos1: Position = pos1
+            .try_into()
+            .map_err(|_| MoveError::InvalidMoveRequest(format!("Invalid position: {}", pos1)))?;
+        let pos2: Position = pos2
+            .try_into()
+            .map_err(|_| MoveError::InvalidMoveRequest(format!("Invalid position: {}", pos2)))?;
         let partial_request = Box::new(AbsoluteRequest::new(pos1, pos2, promotion_callback));
         let move_: Move = partial_request.find_move(self)?;
-        return self.try_move_internal(move_)
+        return self.try_move_internal(move_);
     }
 
     pub fn try_move_san(&mut self, input: &str) -> Result<MoveResult, MoveError> {
-        let san_request = SANRequest::try_from(input).map_err(|_| MoveError::InvalidMoveRequest(format!("Invalid SAN input: {}", input)))?;
+        let san_request = SANRequest::try_from(input)
+            .map_err(|_| MoveError::InvalidMoveRequest(format!("Invalid SAN input: {}", input)))?;
         let move_: Move = san_request.find_move(self)?;
-        return self.try_move_internal(move_)
+        return self.try_move_internal(move_);
     }
 
     pub fn get_current_count(&self) -> u8 {
@@ -107,20 +157,14 @@ impl Game {
     }
 
     pub fn save_game(&self, filename: &str) {
-        let data: String = self
-            .display_moves()
-            .join("\n");
+        let data: String = self.display_moves().join("\n");
         fs::write(filename, data).expect("Unable to write file");
     }
 
     pub fn load_game(filename: &str) -> Result<Self, String> {
-        let moves = fs::read_to_string(filename)
-            .expect("Unable to read file");
-        
-        let moves = moves
-            .trim()
-            .split_whitespace()
-            .collect::<Vec<&str>>();
+        let moves = fs::read_to_string(filename).expect("Unable to read file");
+
+        let moves = moves.trim().split_whitespace().collect::<Vec<&str>>();
         return Game::from_san_moves(moves);
     }
 
@@ -132,7 +176,7 @@ impl Game {
             None => {
                 self.draw_offer = Some(self.current_turn);
                 return false;
-            },
+            }
         }
     }
 
@@ -194,7 +238,6 @@ impl Game {
                 .map(|(i, x)| (i as usize + 1, x))
                 .collect::<Vec<(usize, String)>>()
         };
-        
 
         let mut result: Vec<String> = Vec::new();
         // Top row
@@ -211,18 +254,24 @@ impl Game {
 
     /// Returns a list of all previous moves in standard notation
     pub fn display_moves(&self) -> Vec<String> {
-        self.moves.iter()
+        self.moves
+            .iter()
             .map(|record| record.get_string())
             .collect::<Vec<String>>()
     }
 
-    fn get_board_rows(&self) -> impl Iterator<Item = String> + '_ + DoubleEndedIterator{
-        self.board.iter()
-            .map(|row| {
-                row.iter()
-                    .map(|tile| if let Some(piece) = tile { piece.as_char() } else { ' ' })
-                    .join(" ")
-            })
+    fn get_board_rows(&self) -> impl Iterator<Item = String> + '_ + DoubleEndedIterator {
+        self.board.iter().map(|row| {
+            row.iter()
+                .map(|tile| {
+                    if let Some(piece) = tile {
+                        piece.as_char()
+                    } else {
+                        ' '
+                    }
+                })
+                .join(" ")
+        })
     }
 
     fn do_move(&mut self, move_: &mut Move) {
@@ -230,20 +279,36 @@ impl Game {
             MoveType::Standard => {
                 self.capture_piece(move_.pos2);
                 self.swap_pieces(move_.pos1, move_.pos2);
-            },
+            }
             MoveType::Castle(castle_type) => {
-                let row = if self.current_turn == Colour::White { 0 } else { 7 };
+                let row = if self.current_turn == Colour::White {
+                    0
+                } else {
+                    7
+                };
                 match castle_type {
                     CastleType::Long => {
-                        self.swap_pieces((4, row).try_into().unwrap(), (2, row).try_into().unwrap());
-                        self.swap_pieces((0, row).try_into().unwrap(), (3, row).try_into().unwrap());
+                        self.swap_pieces(
+                            (4, row).try_into().unwrap(),
+                            (2, row).try_into().unwrap(),
+                        );
+                        self.swap_pieces(
+                            (0, row).try_into().unwrap(),
+                            (3, row).try_into().unwrap(),
+                        );
                     }
                     CastleType::Short => {
-                        self.swap_pieces((4, row).try_into().unwrap(), (6, row).try_into().unwrap());
-                        self.swap_pieces((7, row).try_into().unwrap(), (5, row).try_into().unwrap());
-                    },
+                        self.swap_pieces(
+                            (4, row).try_into().unwrap(),
+                            (6, row).try_into().unwrap(),
+                        );
+                        self.swap_pieces(
+                            (7, row).try_into().unwrap(),
+                            (5, row).try_into().unwrap(),
+                        );
+                    }
                 }
-            },
+            }
             MoveType::PawnAttack => {
                 self.capture_piece(move_.pos2);
                 self.swap_pieces(move_.pos1, move_.pos2);
@@ -252,14 +317,13 @@ impl Game {
                     let chosen_piece = promotion_callback.get_promotion_piece();
                     move_.promotion_piece = Some(chosen_piece);
                     self.get_piece_mut(move_.pos2).as_mut().unwrap().kind = chosen_piece;
-
                 }
-            },
+            }
             MoveType::EnPassant => {
                 self.swap_pieces(move_.pos1, move_.pos2);
                 let diff = PosDiff(0, -1).as_white(self.current_turn);
                 self.capture_piece(move_.pos2.add(diff).unwrap());
-            },
+            }
             MoveType::PawnPush => {
                 self.swap_pieces(move_.pos1, move_.pos2);
                 if let Some(promotion_callback) = &move_.promotion_callback {
@@ -272,10 +336,10 @@ impl Game {
                     };
                     self.get_piece_mut(move_.pos2).as_mut().unwrap().kind = chosen_piece;
                 }
-            },
+            }
             MoveType::PawnStart => {
                 self.swap_pieces(move_.pos1, move_.pos2);
-            },
+            }
         }
     }
 
@@ -284,27 +348,43 @@ impl Game {
             MoveType::Standard => {
                 self.swap_pieces(move_.pos2, move_.pos1);
                 self.uncapture_piece(move_.pos2);
-            },
+            }
             MoveType::Castle(castle_type) => {
-                let row = if self.current_turn == Colour::White { 0 } else { 7 };
+                let row = if self.current_turn == Colour::White {
+                    0
+                } else {
+                    7
+                };
                 match castle_type {
                     CastleType::Long => {
-                        self.swap_pieces((2, row).try_into().unwrap(), (4, row).try_into().unwrap());
-                        self.swap_pieces((3, row).try_into().unwrap(), (0, row).try_into().unwrap());
-                    },
+                        self.swap_pieces(
+                            (2, row).try_into().unwrap(),
+                            (4, row).try_into().unwrap(),
+                        );
+                        self.swap_pieces(
+                            (3, row).try_into().unwrap(),
+                            (0, row).try_into().unwrap(),
+                        );
+                    }
                     CastleType::Short => {
-                        self.swap_pieces((6, row).try_into().unwrap(), (4, row).try_into().unwrap());
-                        self.swap_pieces((5, row).try_into().unwrap(), (7, row).try_into().unwrap());
-                    },
+                        self.swap_pieces(
+                            (6, row).try_into().unwrap(),
+                            (4, row).try_into().unwrap(),
+                        );
+                        self.swap_pieces(
+                            (5, row).try_into().unwrap(),
+                            (7, row).try_into().unwrap(),
+                        );
+                    }
                 }
-            },
+            }
             MoveType::PawnAttack => {
                 if let Some(_) = move_.promotion_callback {
                     self.get_piece_mut(move_.pos2).as_mut().unwrap().kind = PieceType::Pawn;
                 }
                 self.swap_pieces(move_.pos2, move_.pos1);
                 self.uncapture_piece(move_.pos2);
-            },
+            }
             MoveType::PawnPush => {
                 if let Some(_) = move_.promotion_callback {
                     self.get_piece_mut(move_.pos2).as_mut().unwrap().kind = PieceType::Pawn;
@@ -316,11 +396,11 @@ impl Game {
                 let diff = PosDiff(0, -1).as_white(self.current_turn);
                 self.uncapture_piece(move_.pos2.add(diff).unwrap());
                 self.swap_pieces(move_.pos2, move_.pos1);
-            },
+            }
             MoveType::PawnStart => {
                 self.swap_pieces(move_.pos2, move_.pos1);
                 self.uncapture_piece(move_.pos2);
-            },
+            }
         }
     }
 
@@ -328,7 +408,7 @@ impl Game {
         self.do_move(move_);
         if self.is_in_check(self.current_turn) {
             self.undo_move(move_);
-            return Err(MoveError::CausesCheck)
+            return Err(MoveError::CausesCheck);
         }
         if undo {
             self.undo_move(move_)
@@ -338,14 +418,23 @@ impl Game {
 
     /// Checks if there are any moves left for the current turn. If false, the game is over by checkmate or stalemate depending on whether the colour is in check.
     fn any_moves_left(&mut self) -> bool {
-        let potential_moves = self.get_all_colour_pieces(self.current_turn)
+        let potential_moves = self
+            .get_all_colour_pieces(self.current_turn)
             .map(|x| self.get_available_moves(x.position))
             .flatten()
-            .map(|(pos1, pos2)| AbsoluteRequest { pos1, pos2, promotion_callback: Some(|| PieceType::Queen) }.find_move(self) )
+            .map(|(pos1, pos2)| {
+                AbsoluteRequest {
+                    pos1,
+                    pos2,
+                    promotion_callback: Some(|| PieceType::Queen),
+                }
+                .find_move(self)
+            })
             .filter_map(|x| x.ok())
             .collect::<Vec<Move>>();
 
-        return potential_moves.into_iter()
+        return potential_moves
+            .into_iter()
             .map(|mut x| self.check_move(&mut x, true))
             .find_map(|x| x.ok())
             .is_some();
@@ -365,12 +454,13 @@ impl Game {
             if row_col {
                 directions.append(&mut vec![(0, 1), (1, 0), (0, -1), (-1, 0)])
             }
-            directions.iter()
+            directions
+                .iter()
                 .map(|(x, y)| {
                     let mut result: Vec<Position> = Vec::new();
                     let mut k = 1;
                     loop {
-                        let test_pos = base.add(PosDiff(k*x, k*y));
+                        let test_pos = base.add(PosDiff(k * x, k * y));
                         if test_pos.is_ok() {
                             result.push(test_pos.unwrap());
                             k += 1;
@@ -386,33 +476,51 @@ impl Game {
         }
 
         match piece.kind {
-            PieceType::Pawn => { // TODO optimise based on pawn position
-                vec![(0, 1), (-1, 1), (1, 1), (0, 2)].iter()
+            PieceType::Pawn => {
+                // TODO optimise based on pawn position
+                vec![(0, 1), (-1, 1), (1, 1), (0, 2)]
+                    .iter()
                     .map(|(x, y)| PosDiff(*x, *y))
                     .map(|x| piece.position.add(x))
                     .filter_map(|x| x.ok())
                     .map(|x| (piece.position, x))
                     .collect::<Vec<(Position, Position)>>()
-            },
+            }
             PieceType::Rook => explore_sides(piece.position, false, true),
-            PieceType::Knight => {
-                vec![(2,1), (2,-1), (-2,1), (-2,-1), (1,2), (-1,2), (1,-2), (-1,-2)].iter()
-                    .map(|(x, y)| PosDiff(*x, *y))
-                    .map(|x| piece.position.add(x))
-                    .filter_map(|x| x.ok())
-                    .map(|x| (piece.position, x))
-                    .collect::<Vec<(Position, Position)>>()
-            },
+            PieceType::Knight => vec![
+                (2, 1),
+                (2, -1),
+                (-2, 1),
+                (-2, -1),
+                (1, 2),
+                (-1, 2),
+                (1, -2),
+                (-1, -2),
+            ]
+            .iter()
+            .map(|(x, y)| PosDiff(*x, *y))
+            .map(|x| piece.position.add(x))
+            .filter_map(|x| x.ok())
+            .map(|x| (piece.position, x))
+            .collect::<Vec<(Position, Position)>>(),
             PieceType::Bishop => explore_sides(piece.position, true, false),
             PieceType::Queen => explore_sides(piece.position, true, true),
-            PieceType::King => {
-                vec![(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1,-1)].iter()
-                    .map(|(x, y)| PosDiff(*x, *y))
-                    .map(|x| piece.position.add(x))
-                    .filter_map(|x| x.ok())
-                    .map(|x| (piece.position, x))
-                    .collect::<Vec<(Position, Position)>>()
-            },
+            PieceType::King => vec![
+                (-1, 0),
+                (-1, 1),
+                (0, 1),
+                (1, 1),
+                (1, 0),
+                (1, -1),
+                (0, -1),
+                (-1, -1),
+            ]
+            .iter()
+            .map(|(x, y)| PosDiff(*x, *y))
+            .map(|x| piece.position.add(x))
+            .filter_map(|x| x.ok())
+            .map(|x| (piece.position, x))
+            .collect::<Vec<(Position, Position)>>(),
         }
     }
 
@@ -430,18 +538,23 @@ impl Game {
         let diff = Position::diff(pos2, pos1);
         if let Some(piece2) = self.get_piece(pos2).as_ref() {
             if piece.colour == piece2.colour {
-                return Err(MoveError::AttackingSameColour)
+                return Err(MoveError::AttackingSameColour);
             }
         }
 
         fn can_reach_between(game: &Game, pos: Position, diff: PosDiff) -> Result<(), MoveError> {
-            let inc = if (diff.0 == diff.1) || (diff.0 == -diff.1) || (diff.0 == 0) || (diff.1 == 0) {
+            let inc = if (diff.0 == diff.1) || (diff.0 == -diff.1) || (diff.0 == 0) || (diff.1 == 0)
+            {
                 (diff.0.signum(), diff.1.signum())
             } else {
                 return Err(MoveError::InvalidMovement);
             };
 
-            let max_k = if diff.0 == 0 { diff.1.abs() } else { diff.0.abs() };
+            let max_k = if diff.0 == 0 {
+                diff.1.abs()
+            } else {
+                diff.0.abs()
+            };
             for k in 1..max_k {
                 if let Some(_) = game.get_piece(pos.add(PosDiff(inc.0 * k, inc.1 * k)).unwrap()) {
                     return Err(MoveError::PositionBlocked);
@@ -455,68 +568,95 @@ impl Game {
                 // Makes matching easier for black movements (0, -2) instead of (0, 2)
                 let pos_as_white = piece.position.as_white(piece.colour);
                 let diff_as_white = diff.as_white(piece.colour);
-                match diff_as_white { // Starting move
+                match diff_as_white {
+                    // Starting move
                     PosDiff(0, 2) if pos_as_white.1 == 1 => {
-                        if let &Some(_) = self.get_piece(pos2) { return Err(MoveError::PositionBlocked) }
+                        if let &Some(_) = self.get_piece(pos2) {
+                            return Err(MoveError::PositionBlocked);
+                        }
                         can_reach_between(self, pos1, diff)?;
                         return Ok(MoveType::PawnStart);
-                    },
-                    PosDiff(0, 1) => { // Move forward
-                        if let &Some(_) = self.get_piece(pos2) { 
-                            return Err(MoveError::PositionBlocked) 
+                    }
+                    PosDiff(0, 1) => {
+                        // Move forward
+                        if let &Some(_) = self.get_piece(pos2) {
+                            return Err(MoveError::PositionBlocked);
                         } else {
-                            return Ok(MoveType::PawnPush)
+                            return Ok(MoveType::PawnPush);
                         }
-                    }, 
-                    PosDiff(1|-1, 1) => {  // Attack or En Passant
-                        if let &Some(_) = self.get_piece(pos2) { // Standard attack
+                    }
+                    PosDiff(1 | -1, 1) => {
+                        // Attack or En Passant
+                        if let &Some(_) = self.get_piece(pos2) {
+                            // Standard attack
                             return Ok(MoveType::PawnAttack);
-                        } else { // En Passant
-                            let last_move = self.moves.last()
+                        } else {
+                            // En Passant
+                            let last_move = self
+                                .moves
+                                .last()
                                 .ok_or(MoveError::InvalidEnPassantConditions)?;
-                            if let Move { pos1: last_pos, kind: MoveType::PawnStart, .. } = last_move {
+                            if let Move {
+                                pos1: last_pos,
+                                kind: MoveType::PawnStart,
+                                ..
+                            } = last_move
+                            {
                                 if *last_pos == pos1.add(PosDiff(diff.0, diff.1 * 2)).unwrap() {
-                                    return Ok(MoveType::EnPassant)
+                                    return Ok(MoveType::EnPassant);
                                 }
                             }
                             return Err(MoveError::InvalidEnPassantConditions);
                         }
-                    },
+                    }
                     _ => return Err(MoveError::InvalidMovement),
                 }
-            },
+            }
             PieceType::Rook => {
-                if !((diff.0 == 0) || (diff.1 == 0)) {return Err(MoveError::InvalidMovement)}
+                if !((diff.0 == 0) || (diff.1 == 0)) {
+                    return Err(MoveError::InvalidMovement);
+                }
                 can_reach_between(self, pos1, diff)?;
                 return Ok(MoveType::Standard);
-            },
+            }
             PieceType::Knight => {
-                if !((diff.0.abs() == 2 && diff.1.abs() == 1) || (diff.0.abs() == 1 && diff.1.abs() == 2)) {return Err(MoveError::InvalidMovement)}
+                if !((diff.0.abs() == 2 && diff.1.abs() == 1)
+                    || (diff.0.abs() == 1 && diff.1.abs() == 2))
+                {
+                    return Err(MoveError::InvalidMovement);
+                }
                 return Ok(MoveType::Standard);
-            },
+            }
             PieceType::Bishop => {
-                if !((diff.0 == -diff.1) || (diff.0 == diff.1)) {return Err(MoveError::InvalidMovement)}
+                if !((diff.0 == -diff.1) || (diff.0 == diff.1)) {
+                    return Err(MoveError::InvalidMovement);
+                }
                 can_reach_between(self, pos1, diff)?;
                 return Ok(MoveType::Standard);
-            },
+            }
             PieceType::Queen => {
                 can_reach_between(self, pos1, diff)?;
                 return Ok(MoveType::Standard);
-            },
+            }
             PieceType::King => {
                 match diff {
-                    PosDiff(0|-1|1, 0|-1|1) => return Ok(MoveType::Standard),
-                    PosDiff(direction @ (-2|2), 0) => { // Castle
-                        let castle_type = if direction < 0 { CastleType::Long} else { CastleType::Short };
+                    PosDiff(0 | -1 | 1, 0 | -1 | 1) => return Ok(MoveType::Standard),
+                    PosDiff(direction @ (-2 | 2), 0) => {
+                        // Castle
+                        let castle_type = if direction < 0 {
+                            CastleType::Long
+                        } else {
+                            CastleType::Short
+                        };
                         if self.can_castle(castle_type, piece.colour) {
                             return Ok(MoveType::Castle(castle_type));
                         } else {
-                            return Err(MoveError::InvalidCastleConditions)
+                            return Err(MoveError::InvalidCastleConditions);
                         }
-                    },
+                    }
                     _ => return Err(MoveError::InvalidMovement),
                 }
-            },
+            }
         }
     }
 
@@ -538,17 +678,24 @@ impl Game {
 
     /// Checks if a colour is in check
     fn is_in_check(&self, colour: Colour) -> bool {
-        let king_pos = self.get_king_pos(colour); 
+        let king_pos = self.get_king_pos(colour);
         return self.is_attacked(colour, king_pos);
     }
 
     pub(crate) fn can_castle(&self, castle_type: CastleType, colour: Colour) -> bool {
-        let row = if self.current_turn == Colour::White { 0 } else { 7 };
+        let row = if self.current_turn == Colour::White {
+            0
+        } else {
+            7
+        };
         let king = self.get_piece(self.get_king_pos(colour)).as_ref().unwrap(); // King has to exist
-        let rook = self.get_piece(match castle_type {
-            CastleType::Long => (0, row).try_into().unwrap(),
-            CastleType::Short => (7, row).try_into().unwrap(),
-        }).as_ref().unwrap();
+        let rook = self
+            .get_piece(match castle_type {
+                CastleType::Long => (0, row).try_into().unwrap(),
+                CastleType::Short => (7, row).try_into().unwrap(),
+            })
+            .as_ref()
+            .unwrap();
 
         // King and rook must not have moved
         if king.history.len() > 0 || rook.history.len() > 0 {
@@ -556,7 +703,11 @@ impl Game {
         }
 
         // No pieces between king and rook
-        let files_to_check = if castle_type == CastleType::Long { 1..=3 } else { 5..=6 };
+        let files_to_check = if castle_type == CastleType::Long {
+            1..=3
+        } else {
+            5..=6
+        };
         for pos in files_to_check.map(|x| Position::try_from((x, row)).unwrap()) {
             if let Some(_) = self.get_piece(pos) {
                 return false;
@@ -564,7 +715,11 @@ impl Game {
         }
 
         // King must not be in check or move through a square in check
-        let files_to_check = if castle_type == CastleType::Long { 2..=4 } else { 4..=6 };
+        let files_to_check = if castle_type == CastleType::Long {
+            2..=4
+        } else {
+            4..=6
+        };
         for pos in files_to_check.map(|x| Position::try_from((x, row)).unwrap()) {
             if self.is_attacked(colour, pos) {
                 return false;
@@ -576,9 +731,8 @@ impl Game {
     pub fn from_san_moves(input: Vec<&str>) -> Result<Self, String> {
         let mut game = Game::new();
         for (i, x) in input.into_iter().enumerate() {
-
             if game.try_move_san(x).is_err() {
-                return Err(format!("Cannot parse move no.{}: {}", i+1, x))
+                return Err(format!("Cannot parse move no.{}: {}", i + 1, x));
             }
         }
         return Ok(game);
@@ -599,60 +753,74 @@ mod tests {
     #[test]
     fn test_find_move() {
         let game = Game::new();
-    
+
         // Pawn E2 -> E4
         assert_eq!(
-            game.find_move("e2".try_into().unwrap(), "e4".try_into().unwrap()).unwrap(),
+            game.find_move("e2".try_into().unwrap(), "e4".try_into().unwrap())
+                .unwrap(),
             MoveType::PawnStart
         );
         // Pawn E2 -> E3
         assert_eq!(
-            game.find_move("e2".try_into().unwrap(), "e3".try_into().unwrap()).unwrap(),
+            game.find_move("e2".try_into().unwrap(), "e3".try_into().unwrap())
+                .unwrap(),
             MoveType::PawnPush
         );
         // Knight B1 -> C3
         assert_eq!(
-            game.find_move("b1".try_into().unwrap(), "c3".try_into().unwrap()).unwrap(),
+            game.find_move("b1".try_into().unwrap(), "c3".try_into().unwrap())
+                .unwrap(),
             MoveType::Standard
         );
         // Queen D1 -> B3
         assert_eq!(
-            game.find_move("d1".try_into().unwrap(), "b3".try_into().unwrap()).err().unwrap(),
+            game.find_move("d1".try_into().unwrap(), "b3".try_into().unwrap())
+                .err()
+                .unwrap(),
             MoveError::PositionBlocked
         );
         // Bishop F8 -> A4
         assert_eq!(
-            game.find_move("f8".try_into().unwrap(), "a4".try_into().unwrap()).err().unwrap(),
+            game.find_move("f8".try_into().unwrap(), "a4".try_into().unwrap())
+                .err()
+                .unwrap(),
             MoveError::InvalidMovement
         );
         // Queen D1 -> E1
         assert_eq!(
-            game.find_move("d1".try_into().unwrap(), "e1".try_into().unwrap()).err().unwrap(),
+            game.find_move("d1".try_into().unwrap(), "e1".try_into().unwrap())
+                .err()
+                .unwrap(),
             MoveError::AttackingSameColour
         );
 
-        let game = Game::from_san_moves(vec!["e4", "h5", "Nf3", "h4", "Ba6", "h3", "e5", "d5"]).unwrap();
+        let game =
+            Game::from_san_moves(vec!["e4", "h5", "Nf3", "h4", "Ba6", "h3", "e5", "d5"]).unwrap();
         // Short Castle: E1 -> G1
         assert_eq!(
-            game.find_move("e1".try_into().unwrap(), "g1".try_into().unwrap()).unwrap(),
+            game.find_move("e1".try_into().unwrap(), "g1".try_into().unwrap())
+                .unwrap(),
             MoveType::Castle(CastleType::Short)
         );
         // En Passant: E5 -> D6
         assert_eq!(
-            game.find_move("e5".try_into().unwrap(), "d6".try_into().unwrap()).unwrap(),
+            game.find_move("e5".try_into().unwrap(), "d6".try_into().unwrap())
+                .unwrap(),
             MoveType::EnPassant
         );
     }
-    
+
     #[test]
     fn test_try_move_san() {
         let mut game = Game::from_san_moves(vec!["Nc3", "e5", "Nf3", "a6", "Nb5", "a5"]).unwrap();
         // Normal moves
         assert!(game.try_move_san("Nd4").is_err());
         assert!(game.try_move_san("Nbd4").is_ok());
-    
+
         // Promotions
-        let mut game = Game::from_san_moves(vec!["c4", "b5", "cxb5", "c5", "c6", "Bb7", "cxb7", "a6"]).unwrap();
+        let mut game =
+            Game::from_san_moves(vec!["c4", "b5", "cxb5", "c5", "c6", "Bb7", "cxb7", "a6"])
+                .unwrap();
         assert!(game.try_move_san("bxa8").is_err());
         assert!(game.try_move_san("bxa8=Q").is_ok());
     }
@@ -673,9 +841,11 @@ mod tests {
 
     #[test]
     fn test_stalemate() {
-        let mut game = Game::from_san_moves(vec!["e3", "a5", "Qh5", "Ra6", "Qxa5", "h5", "h4", "Rah6",
-                                                        "Qxc7", "f6", "Qxd7+", "Kf7", "Qxb7", "Qd3", "Qxb8", "Qh7",
-                                                        "Qxc8", "Kg6"]).unwrap();
+        let mut game = Game::from_san_moves(vec![
+            "e3", "a5", "Qh5", "Ra6", "Qxa5", "h5", "h4", "Rah6", "Qxc7", "f6", "Qxd7+", "Kf7",
+            "Qxb7", "Qd3", "Qxb8", "Qh7", "Qxc8", "Kg6",
+        ])
+        .unwrap();
         assert_eq!(
             game.try_move_san("Qe6").unwrap(),
             MoveResult::Stalemate(Colour::White)

@@ -1,4 +1,9 @@
-use super::{components::{Colour, Piece, PieceType, Position, parse_file, parse_rank, piece_as_char, FILES}, game::Game};
+use super::{
+    components::{
+        parse_file, parse_rank, piece_as_char, Colour, Piece, PieceType, Position, FILES,
+    },
+    game::Game,
+};
 use std::convert::TryFrom;
 
 pub(super) struct Move {
@@ -23,30 +28,39 @@ impl Move {
 
         if let Some(_) = &self.san_string {
             // Already computed
-            return
+            return;
         } else if let MoveType::Castle(castle_type) = self.kind {
             let string = castle_type.as_string();
             self.san_string = Some(string);
         } else {
             let piece_char = match self.piece_type {
                 PieceType::Pawn => "".to_string(),
-                piece_type => piece_as_char(piece_type, self.colour).to_string()
+                piece_type => piece_as_char(piece_type, self.colour).to_string(),
             };
 
             let captures = if self.captures { "x" } else { "" };
 
             // Look for other moves
-            let other_possibilities: Vec<Position> = game.get_all_colour_pieces(self.colour)
+            let other_possibilities: Vec<Position> = game
+                .get_all_colour_pieces(self.colour)
                 .filter(|&x| x.kind == self.piece_type && x.position != self.pos1)
                 .filter(|&x| game.find_move(x.position, self.pos2).is_ok())
                 .map(|x| x.position)
                 .collect();
 
-            let mut start_file: String = match other_possibilities.iter().map(|x| x.1).find(|&x| x == self.pos1.1) {
+            let mut start_file: String = match other_possibilities
+                .iter()
+                .map(|x| x.1)
+                .find(|&x| x == self.pos1.1)
+            {
                 Some(_) => FILES[self.pos1.0].to_string(),
-                _ => "".to_string()
+                _ => "".to_string(),
             };
-            let start_rank: String = match other_possibilities.iter().map(|x| x.0).find(|&x| x == self.pos1.0) {
+            let start_rank: String = match other_possibilities
+                .iter()
+                .map(|x| x.0)
+                .find(|&x| x == self.pos1.0)
+            {
                 Some(_) => format!("{}", self.pos1.1 + 1),
                 _ => "".to_string(),
             };
@@ -70,7 +84,10 @@ impl Move {
             };
             let end_pos = self.pos2.to_string();
 
-            let result = format!("{}{}{}{}{}{}{}", piece_char, start_file, start_rank, captures, end_pos, promotion, end_condition);
+            let result = format!(
+                "{}{}{}{}{}{}{}",
+                piece_char, start_file, start_rank, captures, end_pos, promotion, end_condition
+            );
             self.san_string = Some(result);
         }
     }
@@ -432,31 +449,47 @@ impl PartialRequest for SANRequest {
                     promotion_callback: None,
                     san_string: Some(castle_type.as_string()),
                     promotion_piece: None,
-                })
+                });
             }
         }
 
-        let end_pos = self.end_pos
-            .ok_or(MoveError::InvalidMoveRequest("Must have end position if not castling".into()))?;
-        
-        let promotion: Option<Box<dyn Promotion>> = if self.piece == PieceType::Pawn && end_pos.as_white(colour).1 == 7 {
-            if let Some(promotion) = self.promotion {
-                Some(Box::new(promotion))
+        let end_pos = self.end_pos.ok_or(MoveError::InvalidMoveRequest(
+            "Must have end position if not castling".into(),
+        ))?;
+
+        let promotion: Option<Box<dyn Promotion>> =
+            if self.piece == PieceType::Pawn && end_pos.as_white(colour).1 == 7 {
+                if let Some(promotion) = self.promotion {
+                    Some(Box::new(promotion))
+                } else {
+                    return Err(MoveError::InvalidMoveRequest(
+                        "Must supply promotion piece".into(),
+                    ));
+                }
             } else {
-                return Err(MoveError::InvalidMoveRequest("Must supply promotion piece".into()))
-            }
-        } else {
-            None
-        };
+                None
+            };
 
         let pieces: Vec<&Piece> = game
             .get_all_colour_pieces(colour)
             .filter(|&x| x.kind == self.piece)
-            .filter(|&x| if let Some(file) = self.start_file { x.position.0 == file } else { true } )
-            .filter(|&x| if let Some(rank) = self.start_rank { x.position.1 == rank } else { true } )
+            .filter(|&x| {
+                if let Some(file) = self.start_file {
+                    x.position.0 == file
+                } else {
+                    true
+                }
+            })
+            .filter(|&x| {
+                if let Some(rank) = self.start_rank {
+                    x.position.1 == rank
+                } else {
+                    true
+                }
+            })
             .collect();
         if pieces.len() == 0 {
-            return Err(MoveError::NoPiece)
+            return Err(MoveError::NoPiece);
         }
 
         let mut potential: Vec<(&Piece, MoveType)> = pieces
@@ -469,11 +502,21 @@ impl PartialRequest for SANRequest {
         let (piece, move_type) = match potential.len() {
             0 => return Err(MoveError::InvalidMovement),
             1 => potential.remove(0),
-            _ => return Err(MoveError::InvalidMoveRequest("This move has multiple possibilities. Please make it more specific.".into()))
+            _ => {
+                return Err(MoveError::InvalidMoveRequest(
+                    "This move has multiple possibilities. Please make it more specific.".into(),
+                ))
+            }
         };
 
         let captures = match game.get_piece(end_pos).as_ref() {
-            Some(piece) if piece.colour != colour && move_type != MoveType::PawnPush && move_type != MoveType::PawnPush => true,
+            Some(piece)
+                if piece.colour != colour
+                    && move_type != MoveType::PawnPush
+                    && move_type != MoveType::PawnPush =>
+            {
+                true
+            }
             _ => false,
         };
 

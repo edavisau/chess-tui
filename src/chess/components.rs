@@ -10,7 +10,7 @@ pub(crate) fn parse_file(value: &char) -> Option<usize> {
 
 pub(crate) fn parse_rank(value: &char) -> Option<usize> {
     match value.to_digit(10) {
-        Some(x) if 1 <= x && x <= 8 => Some((x-1) as usize),
+        Some(x) if 1 <= x && x <= 8 => Some((x - 1) as usize),
         _ => None,
     }
 }
@@ -42,7 +42,12 @@ pub(crate) fn piece_as_char(kind: PieceType, colour: Colour) -> char {
 
 impl Piece {
     pub(crate) fn new(kind: PieceType, colour: Colour, position: Position) -> Self {
-        Self { kind, colour, position, history: Vec::new() }
+        Self {
+            kind,
+            colour,
+            position,
+            history: Vec::new(),
+        }
     }
 
     pub(crate) fn as_char(&self) -> char {
@@ -53,7 +58,7 @@ impl Piece {
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Colour {
     White,
-    Black
+    Black,
 }
 
 impl Display for Colour {
@@ -146,14 +151,14 @@ impl TryFrom<&str> for Position {
         let c = value.next().ok_or("Invalid length")?;
         let x: usize = match parse_file(&c) {
             Some(x) => x,
-            None => return Err("Column must be a-h (lowercase)")
+            None => return Err("Column must be a-h (lowercase)"),
         };
 
         let y = match usize::from_str_radix(value.as_str(), 10) {
             Ok(y) if (1 <= y) && (y <= 8) => y - 1,
-            _ => return Err("Row must be 1-8")
+            _ => return Err("Row must be 1-8"),
         };
-        Ok(Self (x, y))
+        Ok(Self(x, y))
     }
 }
 
@@ -194,7 +199,10 @@ mod tests {
     #[test]
     fn test_position_add() {
         let position = Position::try_from("g8").unwrap();
-        assert_eq!(position.add(PosDiff(-3, -2)).unwrap(), Position::try_from("d6").unwrap());
+        assert_eq!(
+            position.add(PosDiff(-3, -2)).unwrap(),
+            Position::try_from("d6").unwrap()
+        );
         assert!(position.add(PosDiff(2, 1)).is_err());
     }
 
@@ -211,7 +219,10 @@ mod tests {
     #[test]
     fn test_position_as_white() {
         let pos1 = Position::try_from("g8").unwrap();
-        assert_eq!(pos1.as_white(Colour::Black), Position::try_from("b1").unwrap());
+        assert_eq!(
+            pos1.as_white(Colour::Black),
+            Position::try_from("b1").unwrap()
+        );
         assert_eq!(pos1.as_white(Colour::White), pos1);
     }
 
