@@ -6,11 +6,9 @@ use super::BOARD_SIZE;
 use super::moves::*;
 use super::components::*;
 
-use serde::{Serialize, Deserialize};
 use itertools::Itertools;
 
 /// Chess game representing the main interface for the game.
-#[derive(Serialize, Deserialize)]
 pub struct Game {
     /// 8x8 board containing a piece or an empty square.
     board: Vec<Vec<Option<Piece>>>,
@@ -62,57 +60,44 @@ impl Game {
         Self::default()
     }
 
-    pub fn try_move_positions<F>(&mut self, pos1: String, pos2: String, promotion_callback: F) -> Result<MoveResult, MoveError> where
-        F: Fn() -> PieceType {
-        let pos1: Position = Position::try_from(&pos1[..]).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
-        let pos2: Position = Position::try_from(&pos2[..]).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
-        
-        if pos1 == pos2 {
-            return Err(MoveError::InvalidMovement);
-        }
+    fn try_move_internal(&mut self, mut move_: Move) -> Result<MoveResult, MoveError> {
+        self.check_move(&mut move_, true)?;
+        move_.compute_string(self);
+        self.do_move(&mut move_);
 
-        let mut found_move: Move = match self.get_piece(pos1).as_ref() {
-            Some(piece) if piece.colour == self.current_turn => self.find_move(pos1, pos2)?,
-            Some(_) => return Err(MoveError::InvalidColour),
-            None => return Err(MoveError::NoPiece),
+        // Update game
+        self.count += 1;
+        self.current_turn = self.current_turn.flip();
+        self.in_check = self.is_in_check(self.current_turn);
+        let moves_left = self.any_moves_left();
+        let result = match (self.in_check, moves_left) {
+            (true, true) => MoveResult::Check(self.current_turn),
+            (true, false) => MoveResult::Checkmate(self.current_turn),
+            (false, true) => MoveResult::MovePlayed,
+            (false, false) => MoveResult::Stalemate(self.current_turn.flip()),
         };
-
-        // Specify promotion piece
-        if let MoveType::PawnPush(ref mut promotion_piece) | MoveType::PawnAttack(_, ref mut promotion_piece) = found_move.kind {
-            *promotion_piece = Some(promotion_callback());
-        }
-
-        return self.try_move(found_move);
+        move_.move_result = Some(result);
+        self.moves.push(move_);
+        return Ok(result)
     }
 
-    #[allow(dead_code)]
-    pub fn from_san_moves(input: Vec<&str>) -> Option<Self> {
-        let mut game = Game::new();
-        for x in input {
-            if game.try_move_san(x).is_err() {
-                return None;
-            }
-        }
-        return Some(game);
+    pub fn try_move_positions<F>(&mut self, pos1: &str, pos2: &str, promotion_callback: Option<F>) -> Result<MoveResult, MoveError>
+    where
+        F: Promotion + 'static
+    {
+        let pos1: Position = pos1.try_into().map_err(|_| MoveError::InvalidMoveRequest(format!("Invalid position: {}", pos1)))?;
+        let pos2: Position = pos2.try_into().map_err(|_| MoveError::InvalidMoveRequest(format!("Invalid position: {}", pos2)))?;
+        let partial_request = Box::new(AbsoluteRequest::new(pos1, pos2, promotion_callback));
+        let move_: Move = partial_request.find_move(self)?;
+        return self.try_move_internal(move_)
     }
 
-    pub fn try_move_san(&mut self, value: &str) -> Result<MoveResult, MoveError> {
-        let move_request = match MoveRequestSAN::try_from(value) {
-            Ok(move_request) => move_request,
-            Err(message) => return Err(MoveError::InvalidMoveRequest(message.to_owned()))
-        };
-
-        let mut found_move = self.check_san_request(&move_request).map_err(|x| MoveError::InvalidMoveRequest(x.to_owned()))?;
-        
-        // Specify promotion piece
-        if let MoveType::PawnAttack(_, Some(piece_type)) | MoveType::PawnPush(Some(piece_type)) = &mut found_move.kind {
-            *piece_type = move_request.promotion.unwrap();
-        }
-
-        return self.try_move(found_move);
+    pub fn try_move_san(&mut self, input: &str) -> Result<MoveResult, MoveError> {
+        let san_request = SANRequest::try_from(input).map_err(|_| MoveError::InvalidMoveRequest(format!("Invalid SAN input: {}", input)))?;
+        let move_: Move = san_request.find_move(self)?;
+        return self.try_move_internal(move_)
     }
 
-    #[allow(dead_code)]
     pub fn get_current_count(&self) -> u8 {
         self.count
     }
@@ -122,13 +107,21 @@ impl Game {
     }
 
     pub fn save_game(&self, filename: &str) {
-        let serialised = serde_json::to_string(self).expect("JSON encoding error");
-        fs::write(filename, serialised).expect("Unable to write file");
+        let data: String = self
+            .display_moves()
+            .join("\n");
+        fs::write(filename, data).expect("Unable to write file");
     }
 
-    pub fn load_game(filename: &str) -> Self {
-        let serialised = fs::read_to_string(filename).expect("Unable to read file");
-        serde_json::from_str(&serialised).unwrap()
+    pub fn load_game(filename: &str) -> Result<Self, String> {
+        let moves = fs::read_to_string(filename)
+            .expect("Unable to read file");
+        
+        let moves = moves
+            .trim()
+            .split_whitespace()
+            .collect::<Vec<&str>>();
+        return Game::from_san_moves(moves);
     }
 
     /// Offers a draw. Returns true if the both sides have agreed to a draw.
@@ -152,7 +145,7 @@ impl Game {
         }
     }
 
-    fn get_piece(&self, pos: Position) -> &Option<Piece> {
+    pub(crate) fn get_piece(&self, pos: Position) -> &Option<Piece> {
         &self.board[pos.1][pos.0]
     }
 
@@ -219,7 +212,7 @@ impl Game {
     /// Returns a list of all previous moves in standard notation
     pub fn display_moves(&self) -> Vec<String> {
         self.moves.iter()
-            .map(|Move{pos, ..}| format!("{}{}todo", pos.0, pos.1))
+            .map(|record| record.get_string())
             .collect::<Vec<String>>()
     }
 
@@ -232,11 +225,11 @@ impl Game {
             })
     }
 
-    fn do_move(&mut self, move_: &Move) {
+    fn do_move(&mut self, move_: &mut Move) {
         match &move_.kind {
-            MoveType::Standard(p2) => {
-                self.capture_piece(*p2);
-                self.swap_pieces(move_.pos, *p2);
+            MoveType::Standard => {
+                self.capture_piece(move_.pos2);
+                self.swap_pieces(move_.pos1, move_.pos2);
             },
             MoveType::Castle(castle_type) => {
                 let row = if self.current_turn == Colour::White { 0 } else { 7 };
@@ -251,52 +244,46 @@ impl Game {
                     },
                 }
             },
-            MoveType::PawnAttack(direction, promotion) => {
-                let diff = if direction == &Direction::Left { 
-                    PosDiff(-1, 1).as_white(self.get_current_colour())
-                } else { 
-                    PosDiff(1, 1).as_white(self.get_current_colour()) 
-                };
-                let pos2 = move_.pos.add(diff).unwrap();
-                self.capture_piece(pos2);
-                self.swap_pieces(move_.pos, pos2);
+            MoveType::PawnAttack => {
+                self.capture_piece(move_.pos2);
+                self.swap_pieces(move_.pos1, move_.pos2);
 
-                if let Some(piece_type) = promotion {
-                    self.get_piece_mut(pos2).as_mut().unwrap().kind = *piece_type;
+                if let Some(promotion_callback) = &move_.promotion_callback {
+                    let chosen_piece = promotion_callback.get_promotion_piece();
+                    move_.promotion_piece = Some(chosen_piece);
+                    self.get_piece_mut(move_.pos2).as_mut().unwrap().kind = chosen_piece;
+
                 }
             },
-            MoveType::EnPassant(direction) => {
-                let diff = if direction == &Direction::Left { 
-                    PosDiff(-1, 1).as_white(self.get_current_colour())
-                } else { 
-                    PosDiff(1, 1).as_white(self.get_current_colour()) 
-                };
-                let pos2 = move_.pos.add(diff).unwrap();
-                self.swap_pieces(move_.pos, pos2);
+            MoveType::EnPassant => {
+                self.swap_pieces(move_.pos1, move_.pos2);
                 let diff = PosDiff(0, -1).as_white(self.current_turn);
-                self.capture_piece(pos2.add(diff).unwrap());
+                self.capture_piece(move_.pos2.add(diff).unwrap());
             },
-            MoveType::PawnPush(promotion) => {
-                let diff = PosDiff(0, 1).as_white(self.get_current_colour());
-                let pos2 = move_.pos.add(diff).unwrap();
-                self.swap_pieces(move_.pos, pos2);
-                if let Some(piece_type) = promotion {
-                    self.get_piece_mut(pos2).as_mut().unwrap().kind = *piece_type;
+            MoveType::PawnPush => {
+                self.swap_pieces(move_.pos1, move_.pos2);
+                if let Some(promotion_callback) = &move_.promotion_callback {
+                    let chosen_piece = if let Some(chosen_piece) = move_.promotion_piece {
+                        chosen_piece
+                    } else {
+                        let chosen_piece = promotion_callback.get_promotion_piece();
+                        move_.promotion_piece = Some(chosen_piece);
+                        chosen_piece
+                    };
+                    self.get_piece_mut(move_.pos2).as_mut().unwrap().kind = chosen_piece;
                 }
             },
             MoveType::PawnStart => {
-                let diff = PosDiff(0, 2).as_white(self.get_current_colour());
-                let pos2 = move_.pos.add(diff).unwrap();
-                self.swap_pieces(move_.pos, pos2);
+                self.swap_pieces(move_.pos1, move_.pos2);
             },
         }
     }
 
     fn undo_move(&mut self, move_: &Move) {
         match &move_.kind {
-            MoveType::Standard(p2) => {
-                self.swap_pieces(*p2, move_.pos);
-                self.uncapture_piece(*p2);
+            MoveType::Standard => {
+                self.swap_pieces(move_.pos2, move_.pos1);
+                self.uncapture_piece(move_.pos2);
             },
             MoveType::Castle(castle_type) => {
                 let row = if self.current_turn == Colour::White { 0 } else { 7 };
@@ -311,46 +298,33 @@ impl Game {
                     },
                 }
             },
-            MoveType::PawnAttack(direction, promotion) => {
-                let diff = if direction == &Direction::Left {
-                    PosDiff(-1, 1).as_white(self.get_current_colour())
-                } else {
-                    PosDiff(1, 1).as_white(self.get_current_colour())
-                };
-                let p2 = move_.pos.add(diff).unwrap();
-                if let Some(_) = promotion {
-                    self.get_piece_mut(p2).as_mut().unwrap().kind = PieceType::Pawn;
+            MoveType::PawnAttack => {
+                if let Some(_) = move_.promotion_callback {
+                    self.get_piece_mut(move_.pos2).as_mut().unwrap().kind = PieceType::Pawn;
                 }
-                self.swap_pieces(p2, move_.pos);
-                self.uncapture_piece(p2);
+                self.swap_pieces(move_.pos2, move_.pos1);
+                self.uncapture_piece(move_.pos2);
             },
-            MoveType::PawnPush(promotion) => {
-                let p2 = move_.pos.add(PosDiff(0, 1).as_white(self.get_current_colour())).unwrap();
-                if let Some(_) = promotion {
-                    self.get_piece_mut(p2).as_mut().unwrap().kind = PieceType::Pawn;
+            MoveType::PawnPush => {
+                if let Some(_) = move_.promotion_callback {
+                    self.get_piece_mut(move_.pos2).as_mut().unwrap().kind = PieceType::Pawn;
                 }
-                self.swap_pieces(p2, move_.pos);
-                self.uncapture_piece(p2);
+                self.swap_pieces(move_.pos2, move_.pos1);
+                self.uncapture_piece(move_.pos2);
             }
-            MoveType::EnPassant(direction) => {
-                let diff = if direction == &Direction::Left {
-                    PosDiff(-1, 1).as_white(self.get_current_colour())
-                } else {
-                    PosDiff(1, 1).as_white(self.get_current_colour())
-                };
-                let p2 = move_.pos.add(diff).unwrap();
-                self.uncapture_piece(p2.add(diff).unwrap());
-                self.swap_pieces(p2, move_.pos);
+            MoveType::EnPassant => {
+                let diff = PosDiff(0, -1).as_white(self.current_turn);
+                self.uncapture_piece(move_.pos2.add(diff).unwrap());
+                self.swap_pieces(move_.pos2, move_.pos1);
             },
             MoveType::PawnStart => {
-                let p2 = move_.pos.add(PosDiff(0, 2).as_white(self.get_current_colour())).unwrap();
-                self.swap_pieces(p2, move_.pos);
-                self.uncapture_piece(p2);
+                self.swap_pieces(move_.pos2, move_.pos1);
+                self.uncapture_piece(move_.pos2);
             },
         }
     }
 
-    fn check_move(&mut self, move_: &Move, undo: bool) -> Result<(), MoveError> {
+    fn check_move(&mut self, move_: &mut Move, undo: bool) -> Result<(), MoveError> {
         self.do_move(move_);
         if self.is_in_check(self.current_turn) {
             self.undo_move(move_);
@@ -367,31 +341,14 @@ impl Game {
         let potential_moves = self.get_all_colour_pieces(self.current_turn)
             .map(|x| self.get_available_moves(x.position))
             .flatten()
-            .map(|(pos1, pos2)| self.find_move(pos1, pos2))
+            .map(|(pos1, pos2)| AbsoluteRequest { pos1, pos2, promotion_callback: Some(|| PieceType::Queen) }.find_move(self) )
             .filter_map(|x| x.ok())
             .collect::<Vec<Move>>();
 
-        return potential_moves.iter()
-            .map(|x| self.check_move(x, true))
+        return potential_moves.into_iter()
+            .map(|mut x| self.check_move(&mut x, true))
             .find_map(|x| x.ok())
             .is_some();
-    }
-
-    fn try_move(&mut self, move_: Move) -> Result<MoveResult, MoveError> {
-        self.check_move(&move_, false)?;
-
-        // Update game
-        self.moves.push(move_);
-        self.count += 1;
-        self.current_turn = self.current_turn.flip();
-        self.in_check = self.is_in_check(self.current_turn);
-        let moves_left = self.any_moves_left();
-        match (self.in_check, moves_left) {
-            (true, true) => return Ok(MoveResult::Check(self.current_turn)),
-            (true, false) => return Ok(MoveResult::Checkmate(self.current_turn)),
-            (false, true) => return Ok(MoveResult::MovePlayed),
-            (false, false) => return Ok(MoveResult::Stalemate(self.current_turn.flip())),
-        }
     }
 
     fn get_available_moves(&self, pos: Position) -> Vec<(Position, Position)> {
@@ -463,14 +420,13 @@ impl Game {
         self.board.iter().flatten().filter_map(|x| x.as_ref())
     }
 
-    fn get_all_colour_pieces(&self, colour: Colour) -> impl Iterator<Item = &Piece> {
+    pub(crate) fn get_all_colour_pieces(&self, colour: Colour) -> impl Iterator<Item = &Piece> {
         self.iterate_pieces().filter(move |&x| x.colour == colour)
     }
 
     // Checks if a piece can perform a move, excluding check conditions
-    fn find_move(&self, pos1: Position, pos2: Position) -> Result<Move, MoveError> {
-        let piece = self.get_piece(pos1).as_ref()
-            .expect(&format!("No piece at {:?}. Must ensure piece exists before calling this function!", pos1));
+    pub(super) fn find_move(&self, pos1: Position, pos2: Position) -> Result<MoveType, MoveError> {
+        let piece = self.get_piece(pos1).as_ref().expect("Piece not found.");
         let diff = Position::diff(pos2, pos1);
         if let Some(piece2) = self.get_piece(pos2).as_ref() {
             if piece.colour == piece2.colour {
@@ -498,35 +454,29 @@ impl Game {
             PieceType::Pawn => {
                 // Makes matching easier for black movements (0, -2) instead of (0, 2)
                 let pos_as_white = piece.position.as_white(piece.colour);
-                let promotion = pos_as_white.1 == 6;
                 let diff_as_white = diff.as_white(piece.colour);
                 match diff_as_white { // Starting move
                     PosDiff(0, 2) if pos_as_white.1 == 1 => {
                         if let &Some(_) = self.get_piece(pos2) { return Err(MoveError::PositionBlocked) }
                         can_reach_between(self, pos1, diff)?;
-                        return Ok(Move::new(pos1, MoveType::PawnStart));
+                        return Ok(MoveType::PawnStart);
                     },
                     PosDiff(0, 1) => { // Move forward
-                        if let &Some(_) = self.get_piece(pos2) { return Err(MoveError::PositionBlocked) }
-                        if promotion {
-                            return Ok(Move::new(pos1, MoveType::PawnPush(Some(PieceType::Queen))));
+                        if let &Some(_) = self.get_piece(pos2) { 
+                            return Err(MoveError::PositionBlocked) 
                         } else {
-                            return Ok(Move::new(pos1, MoveType::PawnPush(None)));
+                            return Ok(MoveType::PawnPush)
                         }
                     }, 
-                    PosDiff(direction @ (1|-1), 1) => {  // Attack or En Passant
-                        let direction = if direction < 0 { Direction::Left } else { Direction::Right };
+                    PosDiff(1|-1, 1) => {  // Attack or En Passant
                         if let &Some(_) = self.get_piece(pos2) { // Standard attack
-                            if promotion {
-                                return Ok(Move::new(pos1, MoveType::PawnAttack(direction, Some(PieceType::Queen))));
-                            } else {
-                                return Ok(Move::new(pos1, MoveType::PawnAttack(direction,  None)));
-                            }
+                            return Ok(MoveType::PawnAttack);
                         } else { // En Passant
-                            let last_move = self.moves.last().ok_or(MoveError::InvalidEnPassantConditions)?;
-                            if let Move { pos: last_pos, kind: MoveType::PawnStart } = last_move {
+                            let last_move = self.moves.last()
+                                .ok_or(MoveError::InvalidEnPassantConditions)?;
+                            if let Move { pos1: last_pos, kind: MoveType::PawnStart, .. } = last_move {
                                 if *last_pos == pos1.add(PosDiff(diff.0, diff.1 * 2)).unwrap() {
-                                    return Ok(Move::new(pos1, MoveType::EnPassant(direction)))
+                                    return Ok(MoveType::EnPassant)
                                 }
                             }
                             return Err(MoveError::InvalidEnPassantConditions);
@@ -538,28 +488,28 @@ impl Game {
             PieceType::Rook => {
                 if !((diff.0 == 0) || (diff.1 == 0)) {return Err(MoveError::InvalidMovement)}
                 can_reach_between(self, pos1, diff)?;
-                return Ok(Move::new(pos1, MoveType::Standard(pos2)));
+                return Ok(MoveType::Standard);
             },
             PieceType::Knight => {
                 if !((diff.0.abs() == 2 && diff.1.abs() == 1) || (diff.0.abs() == 1 && diff.1.abs() == 2)) {return Err(MoveError::InvalidMovement)}
-                return Ok(Move::new(pos1, MoveType::Standard(pos2)));
+                return Ok(MoveType::Standard);
             },
             PieceType::Bishop => {
                 if !((diff.0 == -diff.1) || (diff.0 == diff.1)) {return Err(MoveError::InvalidMovement)}
                 can_reach_between(self, pos1, diff)?;
-                return Ok(Move::new(pos1, MoveType::Standard(pos2)));
+                return Ok(MoveType::Standard);
             },
             PieceType::Queen => {
                 can_reach_between(self, pos1, diff)?;
-                return Ok(Move::new(pos1, MoveType::Standard(pos2)));
+                return Ok(MoveType::Standard);
             },
             PieceType::King => {
                 match diff {
-                    PosDiff(0|-1|1, 0|-1|1) => return Ok(Move::new(pos1, MoveType::Standard(pos2))),
+                    PosDiff(0|-1|1, 0|-1|1) => return Ok(MoveType::Standard),
                     PosDiff(direction @ (-2|2), 0) => { // Castle
                         let castle_type = if direction < 0 { CastleType::Long} else { CastleType::Short };
                         if self.can_castle(castle_type, piece.colour) {
-                            return Ok(Move::new(pos1, MoveType::Castle(castle_type)));
+                            return Ok(MoveType::Castle(castle_type));
                         } else {
                             return Err(MoveError::InvalidCastleConditions)
                         }
@@ -578,7 +528,7 @@ impl Game {
             .is_some()
     }
 
-    fn get_king_pos(&self, colour: Colour) -> Position {
+    pub(crate) fn get_king_pos(&self, colour: Colour) -> Position {
         self.iterate_pieces()
             .filter(move |&x| x.colour == colour && x.kind == PieceType::King)
             .next()
@@ -592,7 +542,7 @@ impl Game {
         return self.is_attacked(colour, king_pos);
     }
 
-    fn can_castle(&self, castle_type: CastleType, colour: Colour) -> bool {
+    pub(crate) fn can_castle(&self, castle_type: CastleType, colour: Colour) -> bool {
         let row = if self.current_turn == Colour::White { 0 } else { 7 };
         let king = self.get_piece(self.get_king_pos(colour)).as_ref().unwrap(); // King has to exist
         let rook = self.get_piece(match castle_type {
@@ -623,48 +573,15 @@ impl Game {
         return true;
     }
 
-    fn check_san_request(&mut self, move_request: &MoveRequestSAN) -> Result<Move, &'static str> {
-        // Most moves can be found by looking at the position and using Game::found_move.
-        // However castling and promotions can be handled differently
+    pub fn from_san_moves(input: Vec<&str>) -> Result<Self, String> {
+        let mut game = Game::new();
+        for (i, x) in input.into_iter().enumerate() {
 
-        // Castling
-        if let Some(castle_type) = move_request.castle {
-            if self.can_castle(castle_type, self.get_current_colour()) {
-                let king_pos = self.get_king_pos(self.get_current_colour());
-                return Ok(Move::new(king_pos, MoveType::Castle(castle_type)));
-            } else {
-                return Err("Invalid castle conditions");
+            if game.try_move_san(x).is_err() {
+                return Err(format!("Cannot parse move no.{}: {}", i+1, x))
             }
         }
-
-        // Promotions
-        if move_request.piece == PieceType::Pawn && move_request.end_pos
-                .unwrap()
-                .as_white(self.get_current_colour()).1 == 7 {
-            if move_request.promotion.is_none() {
-                return Err("Must provide promotion piece when doing promotions")
-            }
-        }
-
-        let pieces: Vec<&Piece> = self.get_all_colour_pieces(self.get_current_colour())
-            .filter(|&x| x.kind == move_request.piece)
-            .filter(|&x| if let Some(file) = move_request.start_file { x.position.0 == file } else { true } )
-            .filter(|&x| if let Some(rank) = move_request.start_rank { x.position.1 == rank } else { true } )
-            .collect();
-        if pieces.len() == 0 {
-            return Err("No piece from the move request has been found on the board.")
-        }
-
-        let mut potential_moves: Vec<Move> = pieces.into_iter()
-            .map(|x| self.find_move(x.position, move_request.end_pos.unwrap()))
-            .filter_map(|x| x.ok())
-            .collect();
-
-        return match potential_moves.len() {
-            0 => Err("No such move is possible."),
-            1 => Ok(potential_moves.remove(0)),
-            _ => Err("This move has multiple possibilities. Please make it more specific."),
-        }
+        return Ok(game);
     }
 }
 
@@ -686,17 +603,17 @@ mod tests {
         // Pawn E2 -> E4
         assert_eq!(
             game.find_move("e2".try_into().unwrap(), "e4".try_into().unwrap()).unwrap(),
-            Move::new("e2".try_into().unwrap(), MoveType::PawnStart)
+            MoveType::PawnStart
         );
         // Pawn E2 -> E3
         assert_eq!(
             game.find_move("e2".try_into().unwrap(), "e3".try_into().unwrap()).unwrap(),
-            Move::new("e2".try_into().unwrap(), MoveType::PawnPush(None))
+            MoveType::PawnPush
         );
         // Knight B1 -> C3
         assert_eq!(
             game.find_move("b1".try_into().unwrap(), "c3".try_into().unwrap()).unwrap(),
-            Move::new("b1".try_into().unwrap(), MoveType::Standard("c3".try_into().unwrap()))
+            MoveType::Standard
         );
         // Queen D1 -> B3
         assert_eq!(
@@ -718,12 +635,12 @@ mod tests {
         // Short Castle: E1 -> G1
         assert_eq!(
             game.find_move("e1".try_into().unwrap(), "g1".try_into().unwrap()).unwrap(),
-            Move::new("e1".try_into().unwrap(), MoveType::Castle(CastleType::Short))
+            MoveType::Castle(CastleType::Short)
         );
         // En Passant: E5 -> D6
         assert_eq!(
             game.find_move("e5".try_into().unwrap(), "d6".try_into().unwrap()).unwrap(),
-            Move::new("e5".try_into().unwrap(), MoveType::EnPassant(Direction::Left))
+            MoveType::EnPassant
         );
     }
     

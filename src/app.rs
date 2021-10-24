@@ -21,7 +21,7 @@ pub struct App {
 
 impl App {
     pub fn from_file(filename: &str) -> Self {
-        App { game: Game::load_game(filename), ..Default::default() }
+        App { game: Game::load_game(filename).unwrap(), ..Default::default() }
     }
 
     pub fn add_input_char(&mut self, c: char) {

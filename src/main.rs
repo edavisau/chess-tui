@@ -90,7 +90,7 @@ fn handle_player_input(app: &mut App, player_input: &String) -> Option<Result<St
 
     let move_attempted: Option<Result<MoveResult, MoveError>>;
     match action {
-        UserAction::TryPlayPositions(p1, p2) => { move_attempted = Some(app.game.try_move_positions(p1, p2, choose_promotion)) },
+        UserAction::TryPlayPositions(p1, p2) => { move_attempted = Some(app.game.try_move_positions(&p1, &p2, Some(choose_promotion))) },
         UserAction::TryPlaySAN(value) => { move_attempted = Some(app.game.try_move_san(&value[..])) },
         UserAction::SaveGame(filename) => {
             app.game.save_game(&filename);

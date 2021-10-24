@@ -1,11 +1,11 @@
 use std::fmt::Display;
 
-use serde::{Serialize, Deserialize};
-
 use super::BOARD_SIZE;
 
+pub(crate) const FILES: [char; 8] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+
 pub(crate) fn parse_file(value: &char) -> Option<usize> {
-    vec!['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].iter().position(|x| x == value)
+    FILES.iter().position(|x| x == value)
 }
 
 pub(crate) fn parse_rank(value: &char) -> Option<usize> {
@@ -15,12 +15,29 @@ pub(crate) fn parse_rank(value: &char) -> Option<usize> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub(crate) struct Piece {
     pub(crate) kind: PieceType,
     pub(crate) colour: Colour,
     pub(crate) position: Position,
     pub(crate) history: Vec<u8>,
+}
+
+pub(crate) fn piece_as_char(kind: PieceType, colour: Colour) -> char {
+    match (kind, colour) {
+        (PieceType::Pawn, Colour::White) => '\u{2659}',
+        (PieceType::Pawn, Colour::Black) => '\u{265F}',
+        (PieceType::Rook, Colour::White) => '\u{2656}',
+        (PieceType::Rook, Colour::Black) => '\u{265C}',
+        (PieceType::Knight, Colour::White) => '\u{2658}',
+        (PieceType::Knight, Colour::Black) => '\u{265E}',
+        (PieceType::Bishop, Colour::White) => '\u{2657}',
+        (PieceType::Bishop, Colour::Black) => '\u{265D}',
+        (PieceType::Queen, Colour::White) => '\u{2655}',
+        (PieceType::Queen, Colour::Black) => '\u{265B}',
+        (PieceType::King, Colour::White) => '\u{2654}',
+        (PieceType::King, Colour::Black) => '\u{265A}',
+    }
 }
 
 impl Piece {
@@ -29,24 +46,11 @@ impl Piece {
     }
 
     pub(crate) fn as_char(&self) -> char {
-        match (self.kind, self.colour) {
-            (PieceType::Pawn, Colour::White) => '\u{2659}',
-            (PieceType::Pawn, Colour::Black) => '\u{265F}',
-            (PieceType::Rook, Colour::White) => '\u{2656}',
-            (PieceType::Rook, Colour::Black) => '\u{265C}',
-            (PieceType::Knight, Colour::White) => '\u{2658}',
-            (PieceType::Knight, Colour::Black) => '\u{265E}',
-            (PieceType::Bishop, Colour::White) => '\u{2657}',
-            (PieceType::Bishop, Colour::Black) => '\u{265D}',
-            (PieceType::Queen, Colour::White) => '\u{2655}',
-            (PieceType::Queen, Colour::Black) => '\u{265B}',
-            (PieceType::King, Colour::White) => '\u{2654}',
-            (PieceType::King, Colour::Black) => '\u{265A}',
-        }
+        piece_as_char(self.kind, self.colour)
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Colour {
     White,
     Black
@@ -70,7 +74,7 @@ impl Colour {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PieceType {
     Pawn,
     Rook,
@@ -80,7 +84,7 @@ pub enum PieceType {
     King,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Position(pub(super) usize, pub(super) usize);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -112,6 +116,12 @@ impl Position {
             Colour::White => self,
             Colour::Black => Self(BOARD_SIZE - self.0 - 1, BOARD_SIZE - self.1 - 1),
         }
+    }
+
+    pub fn to_string(&self) -> String {
+        let file = FILES[self.0];
+        let rank = self.1 + 1;
+        return format!("{}{}", file, rank);
     }
 }
 

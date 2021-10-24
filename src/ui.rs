@@ -41,7 +41,7 @@ impl Layout {
             .constraints(
                 [
                     Constraint::Min(12),
-                    Constraint::Length(20),
+                    Constraint::Length(22),
                 ].as_ref()
             )
             .margin(0)
@@ -156,7 +156,7 @@ where
     let mut lines: Vec<Spans> = Vec::new();
     for i in 0..moves.len() / 2 {
         lines.push(Spans::from(
-            format!(" {}: {:5} {:5} ", i+1, moves[i*2], moves[i*2 + 1])
+            format!(" {:3}. {:6} {:6}", i+1, moves[i*2], moves[i*2 + 1])
         ));
     }
 
@@ -206,9 +206,11 @@ where
     \tStandard notation: 'Nc3', 'd5', 'fxg6', 'Q3xf4#'\n\
     \n\
     Commands:\n\
-    \t/h: print help\n\
     \t/s <file>: save game to file\n\
-    \t/q: quit game\n";
+    \t/q: quit game\n\
+    \t/od offer draw\n\
+    \t/cd cancel draw\n\
+    \t/r resign\n";
     let p = Paragraph::new(HELP_STR);
     f.render_widget(p, rect);
 }
